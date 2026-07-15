@@ -1,0 +1,9 @@
+name: value_lifecycle
+description: Local explainable lifecycle memory provider with SQLite storage, structured memory values, graph edges, recall scoring, lifecycle maintenance, and static visualization export.
+version: 0.1.0
+graph_extraction:
+  mode: llm
+  base_url: https://api.deepseek.com/v1
+  model: deepseek-chat
+  api_key: sk-5a8...5c38
+  timeout: 30

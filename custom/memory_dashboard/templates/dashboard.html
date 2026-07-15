@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>记忆框架 · Memory Framework</title>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:#0f1117;color:#e1e4e8;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+
+header{background:#161b22;border-bottom:1px solid #30363d;padding:10px 20px;display:flex;align-items:center;justify-content:space-between;z-index:10}
+header h1{font-size:16px;font-weight:600;color:#58a6ff}
+.stats{display:flex;gap:20px;font-size:12px;color:#8b949e}
+.stats span strong{color:#e1e4e8}
+
+/* tabs */
+#tabs{display:flex;background:#161b22;border-bottom:1px solid #30363d;padding:0 20px}
+.tab-btn{padding:8px 18px;cursor:pointer;border:none;background:none;color:#8b949e;font-size:13px;border-bottom:2px solid transparent;transition:all .15s}
+.tab-btn.active{color:#58a6ff;border-bottom-color:#58a6ff}
+.tab-btn:hover{color:#c9d1d9}
+
+#toolbar{display:flex;gap:10px;padding:8px 20px;background:#161b22;border-bottom:1px solid #30363d;align-items:center;flex-wrap:wrap}
+#toolbar input{flex:1;min-width:180px;padding:6px 12px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#e1e4e8;font-size:13px;outline:none}
+#toolbar input:focus{border-color:#58a6ff}
+#toolbar select{padding:6px 12px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#e1e4e8;font-size:13px}
+.btn{padding:6px 14px;border-radius:6px;border:1px solid #30363d;cursor:pointer;font-size:12px;background:#21262d;color:#c9d1d9}
+.btn:hover{background:#30363d}
+.btn-primary{background:#238636;border-color:#238636;color:#fff}
+.btn-primary:hover{background:#2ea043}
+.btn-danger{color:#f85149}
+
+/* panels */
+.panel{display:none;flex:1;overflow:hidden}
+.panel.active{display:flex}
+#graph-panel{position:relative;cursor:grab}
+#graph-panel:active{cursor:grabbing}
+#graph-panel svg{width:100%;height:100%}
+
+/* node circles */
+.node-circle{stroke:#30363d;stroke-width:2;cursor:pointer;transition:stroke .15s}
+.node-circle:hover{stroke:#58a6ff;stroke-width:3}
+.node-circle.selected{stroke:#f0883e;stroke-width:4}
+.node-circle.dimmed{opacity:.15}
+.node-circle.connected{stroke:#58a6ff;stroke-width:3}
+.edge-line{stroke:#30363d;stroke-width:1.5;stroke-opacity:.5}
+.edge-line.dimmed{stroke-opacity:.08}
+.edge-line.connected{stroke:#58a6ff;stroke-opacity:.8;stroke-width:2.5}
+.node-label{fill:#c9d1d9;font-size:11px;pointer-events:none;text-anchor:middle;dominant-baseline:central}
+
+/* tree view */
+#tree-panel{flex-direction:column;background:#0f1117}
+#tree-scroll{flex:1;overflow-y:auto;padding:8px 16px 20px}
+.tree-node{margin:0;user-select:none}
+.tree-row{display:flex;align-items:center;padding:5px 8px;cursor:pointer;border-radius:4px;transition:background .1s;gap:4px;margin:1px 0}
+.tree-row:hover{background:#1c2128}
+.tree-row.selected{background:#1f6feb22;border-left:3px solid #58a6ff;padding-left:5px}
+.tree-toggle{width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;font-size:10px;color:#8b949e;flex-shrink:0;cursor:pointer;border-radius:3px}
+.tree-toggle:hover{background:#30363d}
+.tree-toggle.empty{visibility:hidden}
+.tree-label{font-size:13px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tree-label.root{font-weight:600;color:#e1e4e8}
+.tree-label.child{color:#c9d1d9}
+.tree-count{font-size:10px;color:#8b949e;background:#21262d;padding:1px 6px;border-radius:8px}
+.vs-bar{display:inline-block;width:40px;height:5px;background:#21262d;border-radius:3px;overflow:hidden;vertical-align:middle;flex-shrink:0}
+.vs-fill{height:100%;border-radius:3px}
+.badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:600;flex-shrink:0}
+.badge-事实{background:#1f6feb30;color:#58a6ff}
+.badge-偏好{background:#8957e530;color:#bc8cff}
+.badge-上下文{background:#0e4429;color:#3fb950}
+.badge-流程{background:#9e6a0330;color:#d29922}
+.badge-组件{background:#6e768130;color:#8b949e}
+.badge-用户{background:#cf222e30;color:#f85149}
+.badge-任务主题{background:#bf4b8a30;color:#f778ba}
+.badge-项目{background:#1a7f3730;color:#7ee787}
+.empty{color:#8b949e;padding:40px;text-align:center}
+.empty .icon{font-size:48px;margin-bottom:12px}
+
+/* sidebar */
+#sidebar{position:fixed;right:0;top:0;bottom:0;width:340px;background:#161b22;border-left:1px solid #30363d;z-index:20;transform:translateX(100%);transition:transform .25s;overflow-y:auto;padding:20px}
+#sidebar.open{transform:translateX(0)}
+#sidebar-close{position:absolute;top:12px;right:12px;background:none;border:none;color:#8b949e;font-size:20px;cursor:pointer}
+#sidebar-close:hover{color:#e1e4e8}
+.section{margin-bottom:16px}
+.section h4{font-size:11px;color:#8b949e;text-transform:uppercase;margin-bottom:6px;letter-spacing:.5px}
+.section .val{font-size:13px;color:#e1e4e8;line-height:1.5}
+.connected-list{margin-top:8px;display:flex;flex-wrap:wrap;gap:4px}
+.conn-tag{padding:3px 10px;border-radius:12px;font-size:11px;cursor:pointer;border:1px solid #30363d;background:#21262d;color:#c9d1d9}
+.conn-tag:hover{border-color:#58a6ff}
+
+#loading{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:#8b949e;font-size:16px;z-index:5}
+#loading.hidden{display:none}
+#tooltip{position:absolute;background:#21262d;border:1px solid #30363d;border-radius:8px;padding:8px 12px;font-size:12px;pointer-events:none;z-index:30;display:none;max-width:280px}
+#tooltip .tt-label{font-weight:600;color:#e1e4e8}
+#tooltip .tt-type{font-size:10px;margin-top:2px}
+#tooltip .tt-meta{font-size:10px;color:#8b949e;margin-top:4px}
+#legend{position:absolute;bottom:12px;left:12px;display:flex;flex-wrap:wrap;gap:6px;z-index:5}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:10px;color:#8b949e}
+.legend-dot{width:10px;height:10px;border-radius:50%}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🧠 记忆框架</h1>
+  <div class="stats" id="stats-bar">⏳ 加载中...</div>
+</header>
+
+<div id="tabs">
+  <button class="tab-btn active" onclick="switchTab('tree')">🌳 层级视图</button>
+  <button class="tab-btn" onclick="switchTab('graph')">🔗 连线视图</button>
+</div>
+
+<div id="toolbar">
+  <input type="text" id="search" placeholder="搜索节点..." oninput="doSearch()">
+  <select id="type-filter" onchange="doSearch()">
+    <option value="">全部类型</option>
+  </select>
+  <button class="btn" onclick="resetView()">🔄 重置</button>
+  <button class="btn btn-primary" onclick="addNode()">+ 新建节点</button>
+</div>
+
+<!-- 层级视图 -->
+<div class="panel active" id="tree-panel">
+  <div id="tree-scroll">
+    <div class="empty"><div class="icon">🌳</div>加载中...</div>
+  </div>
+</div>
+
+<!-- 连线视图 -->
+<div class="panel" id="graph-panel">
+  <div id="loading">⏳ 加载图谱数据...</div>
+  <div id="legend"></div>
+  <div id="tooltip"></div>
+</div>
+
+<div id="sidebar">
+  <button id="sidebar-close" onclick="closeSidebar()">✕</button>
+  <div id="sidebar-content"></div>
+</div>
+
+<script>
+// ═══════════════ State ═══════════════
+let allNodes=[], allEdges=[], nodeById={}, treeData=null;
+let selectedNode=null, svg, sim, zoom;
+let treeExpanded={}, currentTab='tree';
+
+const TYPE_COLORS={
+  '项目':'#7ee787','组件':'#8b949e','流程':'#d29922',
+  '上下文':'#3fb950','事实':'#58a6ff','偏好':'#bc8cff',
+  '任务主题':'#f778ba','用户':'#f85149'
+};
+function typeColor(t){return TYPE_COLORS[t]||'#8b949e';}
+function vsColor(vs){if(vs>=0.9)return'#3fb950';if(vs>=0.7)return'#d29922';if(vs>=0.5)return'#db6d28';return'#f85149';}
+function badgeClass(type){const m={'事实':'badge-事实','上下文':'badge-上下文','偏好':'badge-偏好','流程':'badge-流程','组件':'badge-组件','用户':'badge-用户','任务主题':'badge-任务主题','项目':'badge-项目'};return m[type]||'badge-事实';}
+function esc(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ═══════════════ Tab Switch ═══════════════
+function switchTab(name){
+  currentTab=name;
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn')[name==='tree'?0:1].classList.add('active');
+  document.getElementById(name==='tree'?'tree-panel':'graph-panel').classList.add('active');
+  if(name==='graph'&&!svg)initGraph();
+  if(name==='tree')renderTree();
+  doSearch();
+}
+
+// ═══════════════ Load ═══════════════
+async function load(){
+  document.getElementById('stats-bar').innerHTML='⏳ 加载中...';
+  try{
+    const ctrl=new AbortController(),timer=setTimeout(()=>ctrl.abort(),10000);
+    const opts={signal:ctrl.signal};
+    const [gr,mr,tr]=await Promise.all([
+      fetch('/api/graph',opts).then(r=>r.json()),
+      fetch('/api/memories',opts).then(r=>r.json()),
+      fetch('/api/tree',opts).then(r=>r.json())
+    ]);
+    clearTimeout(timer);
+
+    allNodes=gr.nodes;allEdges=gr.edges;treeData=tr;
+    nodeById={};allNodes.forEach(n=>nodeById[n.id]=n);
+
+    document.getElementById('stats-bar').innerHTML=
+      `<span>📝 <strong>${mr.length}</strong> 记忆</span>
+       <span>💤 <strong>${mr.filter(m=>m.status==='休眠').length}</strong> 休眠</span>
+       <span>🛡️ <strong>${mr.filter(m=>m.protected).length}</strong> 保护</span>
+       <span>🔗 <strong>${allNodes.length}</strong> 节点</span>
+       <span>↔️ <strong>${allEdges.length}</strong> 边</span>`;
+
+    const types=[...new Set(allNodes.map(n=>n.type))];
+    const sel=document.getElementById('type-filter');
+    sel.innerHTML='<option value="">全部类型</option>'+types.map(t=>`<option value="${t}">${t}</option>`).join('');
+
+    buildLegend(types);
+    document.getElementById('loading').classList.add('hidden');
+    renderTree();
+  }catch(e){
+    document.getElementById('stats-bar').innerHTML=
+      `<span style="color:#f85149">❌ ${e.name==='AbortError'?'请求超时':'加载失败: '+e.message}</span>`;
+    document.getElementById('loading').textContent='⚠️ 加载失败，请刷新重试';
+  }
+}
+
+function buildLegend(types){
+  document.getElementById('legend').innerHTML=types.map(t=>
+    `<div class="legend-item"><span class="legend-dot" style="background:${typeColor(t)}"></span>${t}</div>`
+  ).join('');
+}
+
+// ═══════════════ Force Graph ═══════════════
+function initGraph(){
+  const panel=document.getElementById('graph-panel');
+  panel.innerHTML='<div id="loading" class="hidden"></div><div id="legend"></div><div id="tooltip"></div>';
+  document.getElementById('loading').classList.add('hidden');
+  buildLegend([...new Set(allNodes.map(n=>n.type))]);
+
+  const W=panel.clientWidth,H=panel.clientHeight;
+  svg=d3.select('#graph-panel').append('svg');
+
+  zoom=d3.zoom().scaleExtent([0.1,4]).on('zoom',(ev)=>{svg_g.attr('transform',ev.transform);});
+  svg.call(zoom);
+
+  const svg_g=svg.append('g');
+  const nodes=allNodes.map(n=>({...n,r:18+(n.value_score||0.8)*14}));
+  const edges=allEdges.map(e=>({...e,source:e.source_node_id,target:e.target_node_id}));
+  const seen=new Set();
+  const uniqueEdges=edges.filter(e=>{const k=e.source+'|'+e.target;if(seen.has(k))return false;seen.add(k);return true;});
+
+  sim=d3.forceSimulation(nodes)
+    .force('link',d3.forceLink(uniqueEdges).id(d=>d.id).distance(100))
+    .force('charge',d3.forceManyBody().strength(-300))
+    .force('center',d3.forceCenter(W/2,H/2))
+    .force('collision',d3.forceCollide().radius(d=>d.r+8));
+
+  const link=svg_g.append('g').selectAll('line').data(uniqueEdges).join('line').attr('class','edge-line');
+
+  const node=svg_g.append('g').selectAll('g').data(nodes).join('g').attr('class','node-group')
+    .call(d3.drag()
+      .on('start',(ev,d)=>{if(!ev.active)sim.alphaTarget(0.3).restart();d.fx=d.x;d.fy=d.y;})
+      .on('drag',(ev,d)=>{d.fx=ev.x;d.fy=ev.y;})
+      .on('end',(ev,d)=>{if(!ev.active)sim.alphaTarget(0);d.fx=null;d.fy=null;}));
+
+  node.append('circle').attr('class','node-circle').attr('r',d=>d.r).attr('fill',d=>typeColor(d.type))
+    .on('click',(ev,d)=>{ev.stopPropagation();selectNode(d);})
+    .on('mouseenter',(ev,d)=>showTooltip(ev,d)).on('mouseleave',hideTooltip);
+
+  node.append('text').attr('class','node-label').text(d=>(d.label||d.id).substring(0,12));
+
+  svg.on('click',()=>{selectedNode=null;clearHighlights();closeSidebar();});
+
+  sim.on('tick',()=>{
+    link.attr('x1',d=>d.source.x).attr('y1',d=>d.source.y).attr('x2',d=>d.target.x).attr('y2',d=>d.target.y);
+    node.attr('transform',d=>`translate(${d.x},${d.y})`);
+  });
+}
+
+// ═══════════════ Tree View ═══════════════
+function getTreeChildren(parentId){
+  if(!treeData)return[];
+  return treeData.nodes.filter(n=>n.parent_id===parentId);
+}
+
+function renderTree(){
+  if(!treeData)return;
+  const container=document.getElementById('tree-scroll');
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  const tf=document.getElementById('type-filter').value;
+
+  // search mode: flat filtered list
+  if(q||tf){
+    let items=treeData.nodes.filter(n=>{
+      if(tf&&n.type!==tf)return false;
+      if(q&&!(n.label||'').toLowerCase().includes(q))return false;
+      return true;
+    });
+    items.sort((a,b)=>(a.label||'').localeCompare(b.label||'','zh'));
+    container.innerHTML=items.length
+      ?items.map(n=>renderTreeNode(n,0,true)).join('')
+      :'<div class="empty"><div class="icon">🔍</div>无匹配结果</div>';
+    return;
+  }
+
+  // tree mode
+  const roots=getTreeChildren(null);
+  if(roots.length===0){container.innerHTML='<div class="empty"><div class="icon">📭</div>暂无根节点</div>';return;}
+
+  const typeOrder={'项目':1,'组件':2,'流程':3,'上下文':4,'事实':5,'偏好':6,'任务主题':7,'用户':8};
+  roots.sort((a,b)=>{const ta=typeOrder[a.type]||99,tb=typeOrder[b.type]||99;if(ta!==tb)return ta-tb;return(a.label||'').localeCompare(b.label||'','zh');});
+
+  container.innerHTML=roots.map(n=>renderTreeNode(n,0,false)).join('');
+}
+
+function renderTreeNode(node,depth,flat){
+  const kids=getTreeChildren(node.id);
+  const kidCount=kids.length;
+  const isExpanded=treeExpanded[node.id]||false;
+  const isSelected=selectedNode&&selectedNode.id===node.id;
+  const indent=depth*20;
+
+  let html='<div class="tree-node">';
+  html+=`<div class="tree-row${isSelected?' selected':''}" style="padding-left:${8+indent}px" onclick="treeClick('${node.id}',event)">`;
+
+  if(kidCount>0&&!flat)html+=`<span class="tree-toggle" onclick="event.stopPropagation();treeToggle('${node.id}')">${isExpanded?'▼':'▶'}</span>`;
+  else html+='<span class="tree-toggle empty">·</span>';
+
+  html+=`<span class="badge ${badgeClass(node.type)}">${esc(node.type||'?')}</span>`;
+  html+=`<span class="tree-label ${depth===0?'root':'child'}">${node.protected?'🛡️ ':''}${node.status==='休眠'?'💤 ':''}${esc(node.label||'(未命名)')}</span>`;
+  if(kidCount>0)html+=`<span class="tree-count">${kidCount}</span>`;
+  html+=`<span class="vs-bar" title="价值 ${((node.value_score||0)*100).toFixed(0)}%"><span class="vs-fill" style="width:${(node.value_score||0)*100}%;background:${vsColor(node.value_score||0)}"></span></span>`;
+  html+=`<span class="vs-bar" title="活跃 ${((node.activity_score||0)*100).toFixed(0)}%"><span class="vs-fill" style="width:${(node.activity_score||0)*100}%;background:#58a6ff"></span></span>`;
+  html+='</div>';
+
+  // children (if expanded)
+  if(!flat&&isExpanded&&kidCount>0){
+    kids.sort((a,b)=>(a.label||'').localeCompare(b.label||'','zh'));
+    for(const kid of kids)html+=renderTreeNode(kid,depth+1,false);
+  }
+  html+='</div>';
+  return html;
+}
+
+function treeToggle(nodeId){
+  treeExpanded[nodeId]=!treeExpanded[nodeId];
+  renderTree();
+}
+
+function treeClick(nodeId,ev){
+  const n=nodeById[nodeId];
+  if(!n)return;
+  selectedNode=n;
+  treeExpanded[nodeId]=!treeExpanded[nodeId];
+  renderTree();
+  const d3node=sim?sim.nodes().find(d=>d.id===nodeId):null;
+  openSidebar(n,getNodeConns(nodeId));
+}
+
+// ═══════════════ Selection (shared) ═══════════════
+function selectNode(d){
+  selectedNode=d;
+  clearHighlights();
+  const connIds=new Set();
+  allEdges.forEach(e=>{
+    if(e.source_node_id===d.id||(e.source&&e.source.id===d.id))connIds.add(e.target_node_id);
+    if(e.target_node_id===d.id||(e.target&&e.target.id===d.id))connIds.add(e.source_node_id);
+  });
+  if(d.id)connIds.add(d.id);
+
+  svg.selectAll('.node-circle')
+    .classed('selected',n=>n.id===d.id)
+    .classed('connected',n=>connIds.has(n.id)&&n.id!==d.id)
+    .classed('dimmed',n=>!connIds.has(n.id));
+  svg.selectAll('.edge-line')
+    .classed('connected',e=>{const sid=e.source?.id||e.source_node_id,tid=e.target?.id||e.target_node_id;return sid===d.id||tid===d.id;})
+    .classed('dimmed',e=>{const sid=e.source?.id||e.source_node_id,tid=e.target?.id||e.target_node_id;return sid!==d.id&&tid!==d.id;});
+
+  openSidebar(d,connIds);
+}
+
+function getNodeConns(nodeId){
+  const connIds=new Set();
+  allEdges.forEach(e=>{
+    if(e.source_node_id===nodeId)connIds.add(e.target_node_id);
+    if(e.target_node_id===nodeId)connIds.add(e.source_node_id);
+  });
+  return connIds;
+}
+
+function clearHighlights(){
+  if(svg){svg.selectAll('.node-circle').classed('selected',false).classed('connected',false).classed('dimmed',false);
+  svg.selectAll('.edge-line').classed('connected',false).classed('dimmed',false);}
+}
+
+// ═══════════════ Sidebar ═══════════════
+function openSidebar(node,connIds){
+  const sb=document.getElementById('sidebar');
+  const sc=document.getElementById('sidebar-content');
+  const connNodes=allNodes.filter(n=>connIds.has(n.id)&&n.id!==node.id);
+  const parents=allEdges.filter(e=>(e.relation==='属于'||e.relation==='包含'||e.relation==='子类')&&e.source_node_id===node.id);
+  const children=allEdges.filter(e=>(e.relation==='属于'||e.relation==='包含'||e.relation==='子类')&&e.target_node_id===node.id);
+
+  sc.innerHTML=`
+    <div class="section"><h4>节点</h4>
+      <div class="val" style="font-size:18px;font-weight:600">${esc(node.label||'(未命名)')}</div>
+      <span class="badge ${badgeClass(node.type||'事实')}">${node.type||'?'}</span>
+    </div>
+    ${(node.metadata&&(node.metadata.content||node.metadata.detail))?`
+    <div class="section"><h4>详情</h4>
+      <div class="val" style="background:#0d1117;padding:10px;border-radius:6px;max-height:200px;overflow-y:auto;white-space:pre-wrap;font-size:12px">${esc(node.metadata.content||node.metadata.detail)}</div>
+    </div>`:''}
+    <div class="section"><h4>基本信息</h4>
+      <div style="font-size:12px;color:#8b949e">
+        价值分:<span style="color:#3fb950">${((node.value_score||0)*100).toFixed(0)}%</span> &nbsp;
+        活跃分:<span style="color:#58a6ff">${((node.activity_score||0)*100).toFixed(0)}%</span><br>
+        置信度:${(node.confidence||0).toFixed(2)} &nbsp; 状态:${node.status||'-'} &nbsp;
+        ${node.protected?'🛡️ 永久保护':'普通记忆'}<br>
+        检索:${node.retrieval_count||0} 次 &nbsp; 有效使用:${node.effective_use_count||0} 次<br>
+        最后强化:${esc(node.reinforced_at||'-')}<br>
+        ${node.forget_after?`预计遗忘:${esc(node.forget_after)}`:'预计遗忘:不适用'}
+      </div>
+    </div>
+    ${parents.length?`<div class="section"><h4>父节点 (${parents.length})</h4><div class="connected-list">
+      ${parents.map(e=>{const p=nodeById[e.target_node_id];return`<span class="conn-tag" onclick="jumpTo('${e.target_node_id}')">📂 ${esc(p?.label||e.target_node_id)}</span>`;}).join('')}
+    </div></div>`:''}
+    ${children.length?`<div class="section"><h4>子节点 (${children.length})</h4><div class="connected-list">
+      ${children.map(e=>{const c=nodeById[e.source_node_id];return`<span class="conn-tag" onclick="jumpTo('${e.source_node_id}')">📁 ${esc(c?.label||e.source_node_id)}</span>`;}).join('')}
+    </div></div>`:''}
+    ${connNodes.length?`<div class="section"><h4>关联节点 (${connNodes.length})</h4><div class="connected-list">
+      ${connNodes.slice(0,20).map(c=>`<span class="conn-tag" onclick="jumpTo('${c.id}')">${esc(c.label||c.id)}</span>`).join('')}
+      ${connNodes.length>20?`<span style="font-size:11px;color:#8b949e">...等${connNodes.length}个</span>`:''}
+    </div></div>`:''}
+    <div class="section"><h4>ID</h4><div class="val" style="font-family:monospace;font-size:10px;color:#8b949e">${node.id}</div></div>`;
+  sb.classList.add('open');
+}
+
+function closeSidebar(){document.getElementById('sidebar').classList.remove('open');}
+
+function jumpTo(nodeId){
+  const n=nodeById[nodeId];if(!n)return;
+  selectedNode=n;
+  if(currentTab==='graph'&&sim){
+    const dn=sim.nodes().find(d=>d.id===nodeId);
+    if(dn){selectNode(dn);const W=document.getElementById('graph-panel').clientWidth,H=document.getElementById('graph-panel').clientHeight;
+      svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity.translate(W/2-dn.x,H/2-dn.y).scale(1.5));}
+  }
+  if(currentTab==='tree')renderTree();
+  openSidebar(n,getNodeConns(nodeId));
+}
+
+// ═══════════════ Tooltip ═══════════════
+function showTooltip(ev,d){
+  const tip=document.getElementById('tooltip');
+  tip.innerHTML=`<div class="tt-label">${esc(d.label||'(未命名)')}</div>
+    <div class="tt-type"><span class="badge ${badgeClass(d.type||'事实')}">${d.type||'?'}</span> 价值 ${((d.value_score||0)*100).toFixed(0)}% · 活跃 ${((d.activity_score||0)*100).toFixed(0)}% ${d.protected?'· 🛡️':''}</div>
+    <div class="tt-meta">${d.id.substring(0,16)}...</div>`;
+  tip.style.display='block';tip.style.left=(ev.pageX+12)+'px';tip.style.top=(ev.pageY-10)+'px';
+}
+function hideTooltip(){document.getElementById('tooltip').style.display='none';}
+
+// ═══════════════ Search ═══════════════
+function doSearch(){
+  const q=(document.getElementById('search').value||'').toLowerCase();
+  const tf=document.getElementById('type-filter').value;
+  if(currentTab==='tree'){renderTree();return;}
+  if(!svg)return;
+  svg.selectAll('.node-circle').classed('dimmed',d=>{
+    if(tf&&d.type!==tf)return true;
+    if(q&&!(d.label||'').toLowerCase().includes(q))return true;
+    return false;
+  });
+}
+
+function resetView(){
+  selectedNode=null;clearHighlights();closeSidebar();
+  document.getElementById('search').value='';document.getElementById('type-filter').value='';
+  if(currentTab==='graph'&&svg){const W=document.getElementById('graph-panel').clientWidth,H=document.getElementById('graph-panel').clientHeight;
+    svg.transition().duration(500).call(zoom.transform,d3.zoomIdentity);sim.alpha(1).restart();}
+  if(currentTab==='tree')renderTree();
+}
+
+function addNode(){alert('新建节点功能开发中，请用 API 直接创建');}
+
+window.addEventListener('resize',()=>{
+  if(!sim)return;
+  const W=document.getElementById('graph-panel').clientWidth,H=document.getElementById('graph-panel').clientHeight;
+  sim.force('center',d3.forceCenter(W/2,H/2));sim.alpha(0.3).restart();
+});
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -e
+
+REAL_HERMES="$HOME/.hermes/hermes-agent/venv/bin/hermes"
+DASHBOARD_PY="$HOME/.hermes/memory_dashboard/app.py"
+PYTHON="$HOME/.hermes/hermes-agent/venv/bin/python3"
+
+case "${1:-}" in
+  -jiyikuangjia|--jiyikuangjia)
+    shift
+    exec "$PYTHON" "$DASHBOARD_PY" "$@"
+    ;;
+  *)
+    exec "$REAL_HERMES" "$@"
+    ;;
+esac

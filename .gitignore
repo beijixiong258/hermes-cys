@@ -1,0 +1,19 @@
+# Secrets and local runtime state
+/.env
+/auth.json
+/config.yaml
+/*.db
+/*.db-shm
+/*.db-wal
+/*.log
+
+# Dependencies and generated files
+venv/
+.venv/
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.cache/
+.curator_backups/
+.hub/
