@@ -185,7 +185,6 @@ async function load(){
 
     document.getElementById('stats-bar').innerHTML=
       `<span>📝 <strong>${mr.length}</strong> 记忆</span>
-       <span>💤 <strong>${mr.filter(m=>m.status==='休眠').length}</strong> 休眠</span>
        <span>🛡️ <strong>${mr.filter(m=>m.protected).length}</strong> 保护</span>
        <span>🔗 <strong>${allNodes.length}</strong> 节点</span>
        <span>↔️ <strong>${allEdges.length}</strong> 边</span>`;
@@ -307,7 +306,7 @@ function renderTreeNode(node,depth,flat){
   else html+='<span class="tree-toggle empty">·</span>';
 
   html+=`<span class="badge ${badgeClass(node.type)}">${esc(node.type||'?')}</span>`;
-  html+=`<span class="tree-label ${depth===0?'root':'child'}">${node.protected?'🛡️ ':''}${node.status==='休眠'?'💤 ':''}${esc(node.label||'(未命名)')}</span>`;
+  html+=`<span class="tree-label ${depth===0?'root':'child'}">${node.protected?'🛡️ ':''}${esc(node.label||'(未命名)')}</span>`;
   if(kidCount>0)html+=`<span class="tree-count">${kidCount}</span>`;
   html+=`<span class="vs-bar" title="价值 ${((node.value_score||0)*100).toFixed(0)}%"><span class="vs-fill" style="width:${(node.value_score||0)*100}%;background:${vsColor(node.value_score||0)}"></span></span>`;
   html+=`<span class="vs-bar" title="活跃 ${((node.activity_score||0)*100).toFixed(0)}%"><span class="vs-fill" style="width:${(node.activity_score||0)*100}%;background:#58a6ff"></span></span>`;
@@ -398,7 +397,7 @@ function openSidebar(node,connIds){
         ${node.protected?'🛡️ 永久保护':'普通记忆'}<br>
         检索:${node.retrieval_count||0} 次 &nbsp; 有效使用:${node.effective_use_count||0} 次<br>
         最后强化:${esc(node.reinforced_at||'-')}<br>
-        ${node.forget_after?`预计遗忘:${esc(node.forget_after)}`:'预计遗忘:不适用'}
+        ${node.protected?'自动删除:已豁免':'自动删除:活跃分低于 8% 且价值分低于 55% 时立即物理删除'}
       </div>
     </div>
     ${parents.length?`<div class="section"><h4>父节点 (${parents.length})</h4><div class="connected-list">

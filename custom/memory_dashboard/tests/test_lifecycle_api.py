@@ -47,12 +47,12 @@ def client(tmp_path):
             );
             CREATE TABLE memory_node_links (memory_id TEXT, node_id TEXT, role TEXT);
             INSERT INTO memories VALUES (
-              'm1','休眠测试记忆','shishi','changqi','test','休眠',0.9,0.8,0.7,
-              2,0.12,0,4,1,NULL,NULL,'2026-07-01','2026-07-20',
+              'm1','活动度测试记忆','shishi','changqi','test','活跃',0.9,0.8,0.7,
+              2,0.12,0,4,1,NULL,NULL,NULL,NULL,
               '2026-01-01','2026-07-01'
             );
             INSERT INTO graph_nodes VALUES (
-              'n1','休眠节点','事实','休眠',0.9,0.7,'{"detail":"休眠测试记忆"}',NULL,
+              'n1','活动度节点','事实','活跃',0.9,0.7,'{"detail":"活动度测试记忆"}',NULL,
               '2026-01-01','2026-07-01'
             );
             INSERT INTO memory_node_links VALUES ('m1','n1','主');
@@ -62,7 +62,7 @@ def client(tmp_path):
     return module.app.test_client()
 
 
-def test_memories_api_exposes_lifecycle_fields(client):
+def test_memories_api_exposes_active_lifecycle_fields(client):
     response = client.get("/api/memories")
     assert response.status_code == 200
     item = response.get_json()[0]
@@ -70,15 +70,17 @@ def test_memories_api_exposes_lifecycle_fields(client):
     assert item["protected"] == 0
     assert item["retrieval_count"] == 4
     assert item["effective_use_count"] == 1
-    assert item["forget_after"] == "2026-07-20"
+    assert "dormant_at" not in item
+    assert "forget_after" not in item
 
 
-def test_graph_api_includes_dormant_node_with_memory_lifecycle(client):
+def test_graph_api_only_includes_active_node_lifecycle(client):
     response = client.get("/api/graph")
     assert response.status_code == 200
     node = response.get_json()["nodes"][0]
     assert node["id"] == "n1"
-    assert node["status"] == "休眠"
+    assert node["status"] == "活跃"
     assert node["activity_score"] == pytest.approx(0.12)
     assert node["protected"] == 0
-    assert node["forget_after"] == "2026-07-20"
+    assert "dormant_at" not in node
+    assert "forget_after" not in node

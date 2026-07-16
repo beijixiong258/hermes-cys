@@ -53,14 +53,34 @@ def test_retrieval_score_prefers_relevant_valuable_active_memory():
     assert good > stale
 
 
+def test_similarity_dominates_high_value_but_unrelated_memory():
+    relevant = retrieval_score(
+        similarity=0.82,
+        value_score=0.60,
+        activity_score_value=0.60,
+        confidence=0.70,
+        strength_score=0.30,
+        token_cost=80,
+    )
+    unrelated_but_valuable = retrieval_score(
+        similarity=0.30,
+        value_score=1.00,
+        activity_score_value=1.00,
+        confidence=1.00,
+        strength_score=1.00,
+        token_cost=20,
+    )
+
+    assert relevant > unrelated_but_valuable
+
+
 def test_protected_memory_never_auto_forgets():
-    policy = LifecyclePolicy(dormant_threshold=0.25, forget_threshold=0.08)
+    policy = LifecyclePolicy(forget_threshold=0.08)
 
     decision = lifecycle_decision(
         value_score=0.20,
         activity_score_value=0.01,
         protected=True,
-        dormant_since=NOW - timedelta(days=365),
         now=NOW,
         policy=policy,
     )
@@ -68,48 +88,48 @@ def test_protected_memory_never_auto_forgets():
     assert decision == "active"
 
 
-def test_low_value_memory_dormants_before_grace_then_forgets():
+def test_low_value_memory_is_forgotten_immediately_without_dormancy():
     policy = LifecyclePolicy(
-        dormant_threshold=0.25,
         forget_threshold=0.08,
         forget_value_threshold=0.55,
-        forget_grace_days=14,
     )
 
     assert lifecycle_decision(
         value_score=0.40,
         activity_score_value=0.05,
         protected=False,
-        dormant_since=None,
-        now=NOW,
-        policy=policy,
-    ) == "dormant"
-
-    assert lifecycle_decision(
-        value_score=0.40,
-        activity_score_value=0.05,
-        protected=False,
-        dormant_since=NOW - timedelta(days=15),
         now=NOW,
         policy=policy,
     ) == "forgotten"
 
 
-def test_high_value_memory_can_sleep_but_is_not_auto_deleted():
+def test_memory_above_activity_threshold_remains_active():
     policy = LifecyclePolicy(
-        dormant_threshold=0.25,
         forget_threshold=0.08,
         forget_value_threshold=0.55,
-        forget_grace_days=14,
+    )
+
+    assert lifecycle_decision(
+        value_score=0.40,
+        activity_score_value=0.10,
+        protected=False,
+        now=NOW,
+        policy=policy,
+    ) == "active"
+
+
+def test_high_value_memory_stays_active_even_when_activity_is_low():
+    policy = LifecyclePolicy(
+        forget_threshold=0.08,
+        forget_value_threshold=0.55,
     )
 
     decision = lifecycle_decision(
         value_score=0.90,
         activity_score_value=0.01,
         protected=False,
-        dormant_since=NOW - timedelta(days=365),
         now=NOW,
         policy=policy,
     )
 
-    assert decision == "dormant"
+    assert decision == "active"

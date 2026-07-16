@@ -18,7 +18,7 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -74,25 +74,30 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "zuida_shumu": 5,
         "zhuru_xitong_tishi": True,
         "zhuru_yuqu": True,
-        "zidong_chouqu": True},
+        "zidong_chouqu": True,
+        "zidong_chouqu_meilun": 4,
+        "zidong_chouqu_meipi": 2,
+        "zidong_chouqu_shangxian": 100},
     "weihu_meilun": 5,
     "qiyong_gongju": True,
     "shengmingzhouqi": {
         "jichu_shuaijian_tianshu": 30.0,
-        "xiumian_yuzhi": 0.25,
         "yiwang_yuzhi": 0.08,
         "yiwang_jiazhi_yuzhi": 0.55,
-        "yiwang_kuanxian_tianshu": 14,
-        "huanxing_xiangsidu_yuzhi": 0.72,
-        "youxiao_shiyong_yuzhi": 0.12},
+        "youxiao_shiyong_chongzhi": True,
+    },
     "jiansuo": {
         "qiyong_tupu": True,
-        "zuida_jiedian": 8,
-        "zuida_quanju_pianhao": 4,
-        "zuixiao_tupu_fenshu": 0.15,
-        "zifu_yusuan": 1800,
-        "meixiang_zifu": 260,
-        "baohan_tupu_bian": True}}
+        "zuida_jiedian": 5,
+        "zuida_quanju_pianhao": 0,
+        "zuixiao_tupu_fenshu": 0.60,
+        "zuixiao_yuyi_xiangsidu": 0.63,
+        "mingan_yuyi_xiangsidu": 0.72,
+        "zuixiao_zhengju_xiangguan": 0.20,
+        "fenshu_chuangkou": 0.12,
+        "zifu_yusuan": 1000,
+        "meixiang_zifu": 220,
+        "baohan_tupu_bian": False}}
 
 MEMORY_TYPES = {
     "yonghu_pianhao",
@@ -103,7 +108,7 @@ MEMORY_TYPES = {
     "linshi_shangxiawen"}
 
 MEMORY_LAYERS = {"duanqi", "changqi"}
-MEMORY_STATUSES = {"活跃", "休眠", "旧", "冲突"}
+MEMORY_STATUSES = {"活跃", "旧", "冲突"}
 
 GRAPH_NODE_TYPES = {
     "user": "用户",
@@ -224,6 +229,33 @@ GRAPH_SCHEMA = {
         "required": []}}
 
 
+AUTO_EXTRACTION_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "maxItems": 2,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "content": {"type": "string", "minLength": 6, "maxLength": 500},
+                    "type": {
+                        "type": "string",
+                        "enum": ["yonghu_pianhao", "liucheng", "shishi"],
+                    },
+                    "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                    "importance": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "required": ["content", "type", "confidence", "importance"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["candidates"],
+    "additionalProperties": False,
+}
+
+
 @dataclass
 class HouxuanJiyi:
     content: str
@@ -293,7 +325,8 @@ class TupuBian:
 class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
     """Local explainable lifecycle memory provider."""
 
-    def __init__(self) -> None:
+    def __init__(self, llm: Any = None) -> None:
+        self._llm = llm
         self._session_id = ""
         self._platform = "cli"
         self._agent_context = "primary"
@@ -304,6 +337,7 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
         self._lock = threading.RLock()
         self._turn_number = 0
         self._pending_retrievals: set[str] = set()
+        self._auto_extraction_turns: List[Dict[str, str]] = []
 
     @property
     def name(self) -> str:
@@ -331,7 +365,11 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
         self._config = self._load_or_create_config()
         self._wm_items: List[str] = []  # memory IDs active in working memory
         self._pending_retrievals = set()
+        self._auto_extraction_turns = []
         self._init_db()
+        # Enforce direct physical forgetting at startup as well as during turns,
+        # so legacy dormant rows never require manual cleanup.
+        self._yunxing_weihu()
 
     def system_prompt_block(self) -> str:
         if not self._config.get("qiyong_gongju", True):
@@ -376,8 +414,8 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
         cfg = self._config.get("jiansuo", {})
         budget = int(cfg.get("zifu_yusuan", self._config.get("zhuru_zifu_yusuan", 1800)))
 
-        # P0: compact global rules/preferences. These are query-independent but
-        # high value; keeping them small prevents prompt bloat.
+        # P0 is normally empty: truly global rules already live in the compact
+        # USER.md/MEMORY.md startup index. The option remains for compatibility.
         global_lines, global_ids = self._quanju_gaojiazhi_jiyi(cfg)
         if global_lines:
             lines.extend(global_lines)
@@ -386,21 +424,24 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
         # P1/P2: semantic graph recall with one-hop graph expansion.
         graph_lines: List[str] = []
         graph_ids: set[str] = set()
-        if cfg.get("qiyong_tupu", True) and _HAS_GRAPH_RETRIEVAL:
+        graph_enabled = bool(cfg.get("qiyong_tupu", True) and _HAS_GRAPH_RETRIEVAL)
+        graph_failed = False
+        if graph_enabled:
             graph_lines, graph_ids = self._tupu_yuyi_shangxiawen(query, cfg)
+            graph_failed = bool(_graph_last_error())
             if graph_lines:
                 lines.extend(graph_lines)
                 used_memory_ids.update(graph_ids)
 
-        # P3 fallback: lexical/value scoring over the raw evidence layer. Always
-        # run lightly so empty embeddings or sparse graph links do not produce
-        # silent misses.
-        fallback_lines, fallback_ids = self._chuantong_jiyi_shangxiawen(
-            query, used_memory_ids, cfg
-        )
-        if fallback_lines:
-            lines.extend(fallback_lines)
-            used_memory_ids.update(fallback_ids)
+        # P3 evidence fallback is a safety net, not a second full recall channel.
+        # Only supplement a sparse graph hit to avoid duplicate facts.
+        if not graph_enabled or graph_failed:
+            fallback_lines, fallback_ids = self._chuantong_jiyi_shangxiawen(
+                query, used_memory_ids, cfg
+            )
+            if fallback_lines:
+                lines.extend(fallback_lines)
+                used_memory_ids.update(fallback_ids)
 
         self._biaozhu_yiyong(used_memory_ids)
         return self._daba_jiansuo_neirong(lines, budget)
@@ -431,16 +472,31 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
             cfg.get("zuida_jiedian", self._config.get("zuida_zhaohui_shu", 8)), 1, 20
         )
         min_score = float(cfg.get("zuixiao_tupu_fenshu", 0.15))
+        min_similarity = float(cfg.get("zuixiao_yuyi_xiangsidu", 0.63))
+        sensitive_similarity = float(cfg.get("mingan_yuyi_xiangsidu", 0.72))
         try:
-            results = _graph_search(query, limit=limit, min_score=min_score)
+            results = _graph_search(
+                query,
+                limit=limit,
+                min_score=min_score,
+                min_similarity=min_similarity,
+                sensitive_similarity=sensitive_similarity,
+            )
         except Exception:
             results = []
         if not results:
             return [], set()
+        score_window = max(0.0, float(cfg.get("fenshu_chuangkou", 0.12)))
+        best_score = float(results[0].get("score") or 0.0)
+        dynamic_floor = max(min_score, best_score - score_window)
+        results = [
+            item for item in results
+            if float(item.get("score") or 0.0) >= dynamic_floor
+        ]
 
         per_item = self._bounded_int(cfg.get("meixiang_zifu", 260), 120, 600)
         include_edges = bool(cfg.get("baohan_tupu_bian", True))
-        lines = ["## 语义记忆检索"]
+        lines = ["## 相关长期记忆"]
         memory_ids: set[str] = set()
         seen_nodes: set[str] = set()
         seen_edges: set[Tuple[str, str, str]] = set()
@@ -451,24 +507,20 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
             if not node_id or node_id in seen_nodes:
                 continue
             seen_nodes.add(node_id)
-            path = item.get("path") or ""
-            path_part = f" ({path})" if path else ""
-            score = float(item.get("score") or 0.0)
-            sim = float(item.get("sim") or 0.0)
             label = str(item.get("label") or "")
-            node_type = str(item.get("type") or "")
             detail = self._qingli_zhuru_text(str(item.get("detail") or ""))
-            line = f"- [{node_type} | score={score:.2f} | sim={sim:.2f}]{path_part} {label}"
-            lines.append(line[:per_item])
-            if detail and detail != label:
-                lines.append(f"  {detail[:per_item]}")
+            clean_item = detail if detail and detail != label else label
+            if clean_item:
+                lines.append(f"- {clean_item[:per_item]}")
 
             for mem in item.get("memories", [])[:2]:
                 mid = str(mem.get("id", ""))
                 content = self._qingli_zhuru_text(str(mem.get("content", "")))
                 if mid:
                     memory_ids.add(mid)
-                if content and content != detail:
+                # Prefer the curated graph detail. Evidence is displayed only
+                # when a node has no usable detail, otherwise it repeats it.
+                if content and not detail:
                     lines.append(f"  证据: {content[:per_item]}")
 
             if include_edges:
@@ -499,24 +551,28 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
     ) -> Tuple[List[str], set[str]]:
         limit = self._bounded_int(self._config.get("zuida_zhaohui_shu", 8), 1, 20)
         matches = self._sousuo(query, limit=limit)
-        selected = [(row, score, explain) for row, score, explain in matches if row.id not in exclude_ids]
+        min_relevance = float(cfg.get("zuixiao_zhengju_xiangguan", 0.20))
+        selected = [
+            (row, score, explain)
+            for row, score, explain in matches
+            if row.id not in exclude_ids
+            and float(explain.get("relevance", 0.0)) >= min_relevance
+        ]
         if not selected:
             return [], set()
 
-        lines = ["## 证据层记忆检索"]
+        lines = ["## 相关长期记忆"]
         ids: set[str] = set()
         for row, score, explain in selected[: max(2, limit // 2)]:
             ids.add(row.id)
             content = self._qingli_zhuru_text(row.content)
-            lines.append(
-                f"- [{row.type} | score={score:.2f} | value={row.value_score:.2f}] "
-                f"{content[:260]}"
-            )
-        graph_lines = self._tupu_shangxiawen_jiyi(list(ids))
-        if graph_lines:
-            lines.append("")
-            lines.append("## 证据层关联边")
-            lines.extend(graph_lines[:8])
+            lines.append(f"- {content[:260]}")
+        if cfg.get("baohan_tupu_bian", False):
+            graph_lines = self._tupu_shangxiawen_jiyi(list(ids))
+            if graph_lines:
+                lines.append("")
+                lines.append("## 关联关系")
+                lines.extend(graph_lines[:8])
         lines.append("")
         return lines, ids
 
@@ -632,18 +688,138 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
             return
 
         self._biaozhu_youxiao_shiyong(user_content, assistant_content)
-
-        # ---- Auto-extraction DISABLED ----
-        # All memory writes now go exclusively through the explicit `memory`
-        # tool (handle_tool_call → _cun_houxuan → LLM graph extraction).
-        # No regex-driven auto-extraction from conversation — it violates
-        # the user's "no hardcoded keyword matching" rule.
-        #
-        # Previously removed: wm_auto working memory extraction
-        # Previously removed: _chouqu_houxuan user_rule extraction
+        self._zidong_chouqu_lun(user_content, assistant_content)
 
         if self._turn_number % int(self._config["weihu_meilun"]) == 0:
             self._yunxing_weihu()
+
+    def _zidong_chouqu_lun(self, user_content: str, assistant_content: str) -> None:
+        """Batch completed turns and run one semantic extraction every N turns."""
+        cfg = self._config.get("gongzuo", {})
+        if not self._as_bool(cfg.get("zidong_chouqu", False)) or self._llm is None:
+            return
+
+        self._auto_extraction_turns.append(
+            {
+                "user": user_content[:1600],
+                "assistant": assistant_content[:1200],
+            }
+        )
+        cadence = self._bounded_int(cfg.get("zidong_chouqu_meilun", 4), 1, 50)
+        if len(self._auto_extraction_turns) < cadence:
+            return
+
+        batch = self._auto_extraction_turns[:cadence]
+        del self._auto_extraction_turns[:cadence]
+        try:
+            self._zidong_chouqu_pici(batch)
+        except Exception:
+            # Extraction is optional and runs after the user has already received
+            # the answer. A provider/model failure must never break the turn.
+            return
+
+    def _zidong_chouqu_pici(self, turns: List[Dict[str, str]]) -> int:
+        """Use the host LLM to extract at most a few durable memories."""
+        if not turns or self._llm is None:
+            return 0
+
+        transcript = []
+        for index, turn in enumerate(turns, 1):
+            transcript.append(
+                f"第{index}轮\n用户：{turn.get('user', '')}\n助手：{turn.get('assistant', '')}"
+            )
+
+        result = self._llm.complete_structured(
+            instructions=(
+                "从以下连续对话中提取值得跨会话保留的稳定记忆。必须进行语义判断，"
+                "不得依赖关键词规则。最多返回少量候选；没有合格内容时返回空数组。\n"
+                "只允许：用户稳定偏好或明确纠正、可复用工作流程、长期稳定事实或环境规则。\n"
+                "禁止：闲聊、情绪、临时任务和进度、项目或比赛经历、一次性结果、原始日志、"
+                "未经用户确认的助手推测。\n"
+                "用户要求电脑管家/赛博秘书模式：账号、地址、凭据路径、密钥等敏感内容可以作为"
+                "本地记忆保存；必须准确记录，但未来不得无故回显或上传，只有任务确实需要时才使用。\n"
+                "每条 content 必须是中文、自包含、可直接作为未来行为依据的陈述；"
+                "不要保存整段对话，不要重复表达同一事实。"
+            ),
+            input=[{"type": "text", "text": "\n\n".join(transcript)}],
+            json_schema=AUTO_EXTRACTION_SCHEMA,
+            schema_name="memory_auto_extraction",
+            temperature=0,
+            max_tokens=700,
+            timeout=60,
+            purpose="memory-auto-extraction",
+        )
+        payload = result.parsed if isinstance(result.parsed, dict) else {}
+        raw_candidates = payload.get("candidates", [])
+        if not isinstance(raw_candidates, list):
+            return 0
+
+        cfg = self._config.get("gongzuo", {})
+        max_items = self._bounded_int(cfg.get("zidong_chouqu_meipi", 2), 1, 5)
+        accepted = 0
+        for raw in raw_candidates[:max_items]:
+            if not isinstance(raw, dict):
+                continue
+            content = self._sanitize(str(raw.get("content", "")))[:500]
+            memory_type = str(raw.get("type", ""))
+            confidence = self._clamp_float(raw.get("confidence", 0.0))
+            importance = self._clamp_float(raw.get("importance", 0.0))
+            if (
+                len(content) < 6
+                or memory_type not in {"yonghu_pianhao", "liucheng", "shishi"}
+                or confidence < 0.70
+                or importance < 0.60
+            ):
+                continue
+
+            candidate = HouxuanJiyi(
+                content=content,
+                type=memory_type,
+                layer="duanqi",
+                source="conversation_auto",
+                confidence=confidence,
+                importance=importance,
+                related_tasks=self._tuili_xiangguan_renwu(content),
+                metadata={
+                    "session_id": self._session_id,
+                    "platform": self._platform,
+                    "extraction": "llm_batch",
+                    "batch_turns": len(turns),
+                },
+            )
+            if self._cun_houxuan(candidate):
+                accepted += 1
+
+        self._xianzhi_zidong_jiyi_shuliang()
+        return accepted
+
+    def _xianzhi_zidong_jiyi_shuliang(self) -> None:
+        """Hard-cap unprotected auto memories so extraction cannot grow forever."""
+        cfg = self._config.get("gongzuo", {})
+        cap = self._bounded_int(cfg.get("zidong_chouqu_shangxian", 100), 1, 1000)
+        with self._lock:
+            with self._db() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT id FROM memories
+                    WHERE source='conversation_auto' AND protected=0
+                    ORDER BY
+                        CASE status WHEN '休眠' THEN 0 WHEN '旧' THEN 1 ELSE 2 END,
+                        effective_use_count ASC,
+                        activity_score ASC,
+                        value_score ASC,
+                        created_at ASC
+                    """
+                ).fetchall()
+                overflow = max(0, len(rows) - cap)
+                for row in rows[:overflow]:
+                    self._delete_memory_cascade(
+                        conn,
+                        row["id"],
+                        reason="auto_memory_cap",
+                        details={"cap": cap},
+                    )
+                conn.commit()
 
     def handle_tool_call(
         self, tool_name: str, args: Dict[str, Any], **kwargs: Any
@@ -717,6 +893,7 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
         self._session_id = new_session_id
         if reset:
             self._turn_number = 0
+            self._auto_extraction_turns = []
             self._guidang_gongzuo_jiyi()
             self._wm_items = []
 
@@ -1381,8 +1558,11 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
 
                 # Derive parent and graph type from memory type
                 if candidate.type == "yonghu_pianhao":
-                    parent_id = "node_8bf3b0fc19f11616f6"  # 用户
+                    parent_id = "e6b379a465e34c87"  # Hermes行为规则
                     node_type = "偏好"
+                elif candidate.type == "liucheng":
+                    parent_id = "e6b379a465e34c87"  # Hermes行为规则
+                    node_type = "流程"
                 else:
                     parent_id = "391d287fe08543a8"  # 系统环境与配置
                     node_type = "事实"
@@ -1993,18 +2173,15 @@ draw();
         query = self._sanitize(query)
         if not query:
             return []
-        rows = self._load_rows(statuses=("活跃", "休眠"), order_by="value_score DESC")
+        rows = self._load_rows(statuses=("活跃",), order_by="value_score DESC")
         query_terms = self._fenci(query)
         scored: List[Tuple[JiyiHang, float, Dict[str, float]]] = []
         lifecycle_cfg = self._config.get("shengmingzhouqi", {})
-        wake_threshold = float(lifecycle_cfg.get("huanxing_xiangsidu_yuzhi", 0.72))
         base_days = float(lifecycle_cfg.get("jichu_shuaijian_tianshu", 30.0))
         for row in rows:
             relevance = self._ciyu_xiangsidu(query_terms, self._fenci(row.content))
             if query and query in row.content:
                 relevance = max(relevance, 0.85)
-            if row.status == "休眠" and relevance < wake_threshold:
-                continue
             activity = self._dangqian_huoyue_du(row)
             strength_days = _memory_strength_days(
                 row.value_score,
@@ -2020,8 +2197,7 @@ draw();
                 strength_score=min(1.0, strength_days / max(1.0, base_days * 3.0)),
                 token_cost=row.token_cost,
             )
-            score = self._clamp(score + self._quanju_jiyi_zengyi(row))
-            if relevance < 0.08 and not row.protected:
+            if relevance < 0.08:
                 continue
             scored.append(
                 (
@@ -2072,11 +2248,8 @@ draw();
         cfg = self._config.get("shengmingzhouqi", {})
         return LifecyclePolicy(
             base_decay_days=float(cfg.get("jichu_shuaijian_tianshu", 30.0)),
-            dormant_threshold=float(cfg.get("xiumian_yuzhi", 0.25)),
             forget_threshold=float(cfg.get("yiwang_yuzhi", 0.08)),
             forget_value_threshold=float(cfg.get("yiwang_jiazhi_yuzhi", 0.55)),
-            forget_grace_days=int(cfg.get("yiwang_kuanxian_tianshu", 14)),
-            wake_threshold=float(cfg.get("huanxing_xiangsidu_yuzhi", 0.72)),
         )
 
     @staticmethod
@@ -2124,9 +2297,9 @@ draw();
     def _chouqu_houxuan(
         self, user_content: str, assistant_content: str
     ) -> List[HouxuanJiyi]:
-        # DISABLED — regex-driven auto-extraction violates the "no regex/hardcoded
-        # keyword matching" memory management rule. All memory writes now go through
-        # the explicit `memory` tool → _cun_houxuan → LLM graph extraction.
+        # Legacy regex extractor remains disabled. Automatic extraction is handled
+        # by _zidong_chouqu_lun(), which batches turns and uses host-owned LLM
+        # structured inference instead of keyword rules.
         return []
         candidates: List[HouxuanJiyi] = []
         explicit = self._you_mingque_jiyi_xinhao(user_content)
@@ -2370,12 +2543,10 @@ draw();
             with self._db() as conn:
                 for row in rows:
                     activity = self._dangqian_huoyue_du(row, now=now_dt)
-                    dormant_since = self._jiexi_shijian(row.dormant_at)
                     decision = _lifecycle_decision(
                         value_score=row.value_score,
                         activity_score_value=activity,
                         protected=row.protected,
-                        dormant_since=dormant_since,
                         now=now_dt,
                         policy=policy,
                     )
@@ -2383,32 +2554,13 @@ draw();
                         self._delete_memory_cascade(
                             conn,
                             row.id,
-                            reason="low_activity_low_value_after_grace",
+                            reason="low_activity_low_value",
                             details={
                                 "value_score": row.value_score,
                                 "activity_score": activity,
                             },
                         )
                         continue
-
-                    status = "休眠" if decision == "dormant" else "活跃"
-                    dormant_at = row.dormant_at
-                    forget_after = row.forget_after
-                    if status == "休眠" and not dormant_at:
-                        dormant_at = now
-                        forget_after = (
-                            now_dt + timedelta(days=policy.forget_grace_days)
-                        ).isoformat()
-                        self._log_event(
-                            conn,
-                            row.id,
-                            "dormant",
-                            "activity_below_threshold",
-                            {"activity_score": activity},
-                        )
-                    elif status == "活跃":
-                        dormant_at = None
-                        forget_after = None
 
                     if (
                         row.layer == "duanqi"
@@ -2424,12 +2576,13 @@ draw();
                     conn.execute(
                         """
                         UPDATE memories
-                        SET activity_score=?, status=?, dormant_at=?, forget_after=?
+                        SET activity_score=?, status='活跃', dormant_at=NULL,
+                            forget_after=NULL
                         WHERE id=?
                         """,
-                        (activity, status, dormant_at, forget_after, row.id),
+                        (activity, row.id),
                     )
-                    self._set_graph_memory_status_in_conn(conn, row.id, status)
+                    self._set_graph_memory_status_in_conn(conn, row.id, "活跃")
                 conn.commit()
 
     def _tisheng_duanqi(self) -> None:
@@ -2790,4 +2943,6 @@ draw();
 
 def register(ctx: Any) -> None:
     """Register provider with Hermes plugin loader."""
-    ctx.register_memory_provider(JiazhiShengmingzhouqiJiyiTigongzhe())
+    ctx.register_memory_provider(
+        JiazhiShengmingzhouqiJiyiTigongzhe(llm=getattr(ctx, "llm", None))
+    )

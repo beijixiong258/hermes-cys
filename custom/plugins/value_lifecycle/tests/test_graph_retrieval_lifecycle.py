@@ -20,7 +20,7 @@ def load_graph_module():
     return module
 
 
-def test_graph_search_uses_lifecycle_score_and_dormant_wake_threshold(tmp_path):
+def test_graph_search_only_returns_active_nodes(tmp_path):
     db_path = tmp_path / "state.db"
     with sqlite3.connect(db_path) as db:
         db.executescript(
@@ -85,6 +85,58 @@ def test_graph_search_uses_lifecycle_score_and_dormant_wake_threshold(tmp_path):
                 "INSERT INTO memory_node_links VALUES (?,?,?)",
                 ("m_" + node_id, node_id, "主"),
             )
+        db.execute(
+            "INSERT INTO graph_nodes VALUES (?,?,?,?,?,?,?, ?,?,?)",
+            (
+                "category",
+                "无证据分类",
+                "上下文",
+                "活跃",
+                1.0,
+                1.0,
+                "2026-01-01",
+                "2026-01-01",
+                json.dumps({"detail": "不应被直接召回"}),
+                json.dumps([1.0, 0.0]),
+            ),
+        )
+        db.execute(
+            "INSERT INTO graph_nodes VALUES (?,?,?,?,?,?,?, ?,?,?)",
+            (
+                "sensitive",
+                "敏感端点",
+                "事实",
+                "活跃",
+                1.0,
+                1.0,
+                "2026-01-01",
+                "2026-01-01",
+                json.dumps(
+                    {"detail": "敏感端点", "sensitive": True, "aliases": ["secret-domain"]}
+                ),
+                json.dumps([0.69, 0.723809]),
+            ),
+        )
+        db.execute(
+            "INSERT INTO memories VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                "m_sensitive",
+                "敏感端点",
+                "shishi",
+                "活跃",
+                1.0,
+                1.0,
+                1.0,
+                0,
+                10,
+                0,
+                "2026-01-01",
+            ),
+        )
+        db.execute(
+            "INSERT INTO memory_node_links VALUES (?,?,?)",
+            ("m_sensitive", "sensitive", "主"),
+        )
         db.commit()
 
     module = load_graph_module()
@@ -94,8 +146,13 @@ def test_graph_search_uses_lifecycle_score_and_dormant_wake_threshold(tmp_path):
     results = module.search("测试", limit=10, min_score=0.01, auto_reindex=False)
     ids = [item["id"] for item in results]
 
-    assert "active" in ids
-    assert "wake" in ids
-    assert "sleep" not in ids
-    assert results[0]["score"] >= results[1]["score"]
-    assert {item["status"] for item in results} == {"活跃", "休眠"}
+    assert ids == ["active"]
+    assert {item["status"] for item in results} == {"活跃"}
+
+    alias_results = module.search(
+        "secret-domain",
+        limit=10,
+        min_score=0.01,
+        auto_reindex=False,
+    )
+    assert "sensitive" in {item["id"] for item in alias_results}

@@ -46,6 +46,11 @@ def _remember_error(exc: Exception) -> None:
     _last_error = f"{type(exc).__name__}: {exc}"
 
 
+def _clear_error() -> None:
+    global _last_error
+    _last_error = ""
+
+
 def _get_model():
     global _model
     if _model is None:
@@ -96,6 +101,22 @@ def _node_text(node: sqlite3.Row) -> str:
     return " ".join(p for p in parts if p).strip()
 
 
+def _normalize_alias_text(text: str) -> str:
+    return "".join(str(text or "").lower().split())
+
+
+def _matched_alias(query: str, metadata: dict[str, Any]) -> str:
+    normalized_query = _normalize_alias_text(query)
+    aliases = metadata.get("aliases", [])
+    if not normalized_query or not isinstance(aliases, list):
+        return ""
+    for alias in aliases:
+        normalized_alias = _normalize_alias_text(str(alias))
+        if len(normalized_alias) >= 2 and normalized_alias in normalized_query:
+            return str(alias)
+    return ""
+
+
 def reindex_all(force: bool = False) -> int:
     """Generate embeddings for graph_nodes.
 
@@ -108,12 +129,12 @@ def reindex_all(force: bool = False) -> int:
     with _connect() as db:
         if force:
             nodes = db.execute(
-                "SELECT id, label, type, metadata FROM graph_nodes WHERE status IN ('活跃','休眠')"
+                "SELECT id, label, type, metadata FROM graph_nodes WHERE status='活跃'"
             ).fetchall()
         else:
             nodes = db.execute(
                 "SELECT id, label, type, metadata FROM graph_nodes "
-                "WHERE status IN ('活跃','休眠') AND (embedding IS NULL OR embedding='')"
+                "WHERE status='活跃' AND (embedding IS NULL OR embedding='')"
             ).fetchall()
 
         for node in nodes:
@@ -133,7 +154,7 @@ def _embedding_stats(db: sqlite3.Connection) -> tuple[int, int]:
     row = db.execute(
         "SELECT COUNT(*) AS total, "
         "SUM(CASE WHEN embedding IS NOT NULL AND embedding!='' THEN 1 ELSE 0 END) AS embedded "
-        "FROM graph_nodes WHERE status IN ('活跃','休眠')"
+        "FROM graph_nodes WHERE status='活跃'"
     ).fetchone()
     return int(row["total"] or 0), int(row["embedded"] or 0)
 
@@ -187,7 +208,7 @@ def _linked_memories(db: sqlite3.Connection, node_id: str, limit: int = 3) -> li
         "SELECT DISTINCT m.id, m.content, m.type, m.status, m.value_score, m.confidence, "
         "m.activity_score, m.protected, m.token_cost, m.effective_use_count "
         "FROM memory_node_links l JOIN memories m ON m.id=l.memory_id "
-        "WHERE l.node_id=? AND m.status IN ('活跃','休眠') "
+        "WHERE l.node_id=? AND m.status='活跃' "
         "ORDER BY m.value_score DESC, m.activity_score DESC LIMIT ?",
         (node_id, limit),
     ).fetchall()
@@ -239,13 +260,16 @@ def _connected_edges(db: sqlite3.Connection, node_id: str, limit: int = 4) -> li
 def search(
     query: str,
     limit: int = 10,
-    min_score: float = 0.15,
+    min_score: float = 0.60,
     *,
+    min_similarity: float = 0.63,
+    sensitive_similarity: float = 0.72,
     auto_reindex: bool = True,
 ) -> list[dict[str, Any]]:
     """Semantic search over active graph_nodes.
 
-    score = cosine_similarity × value_score × confidence × recency_bonus.
+    Semantic similarity is a hard gate. Lifecycle quality only reranks nodes
+    that already passed that gate. Sensitive nodes use a stricter gate.
     Returns node metadata plus linked active memories and one-hop graph edges.
     """
     query = (query or "").strip()
@@ -253,6 +277,7 @@ def search(
         return []
 
     try:
+        _clear_error()
         ensure_schema()
         with _connect() as db:
             total, embedded = _embedding_stats(db)
@@ -263,7 +288,11 @@ def search(
         with _connect() as db:
             nodes = db.execute(
                 "SELECT id, label, type, status, value_score, confidence, updated_at, metadata, embedding "
-                "FROM graph_nodes WHERE status IN ('活跃','休眠') AND embedding IS NOT NULL AND embedding!=''"
+                "FROM graph_nodes n WHERE status='活跃' "
+                "AND embedding IS NOT NULL AND embedding!='' "
+                "AND EXISTS (SELECT 1 FROM memory_node_links l "
+                "JOIN memories m ON m.id=l.memory_id "
+                "WHERE l.node_id=n.id AND m.status='活跃')"
             ).fetchall()
 
             results: list[dict[str, Any]] = []
@@ -273,6 +302,16 @@ def search(
                     sim = cosine(q_vec, vec)
                 except Exception:
                     continue
+
+                meta = _json_loads(node["metadata"], {})
+                is_sensitive = bool(meta.get("sensitive", False))
+                matched_alias = _matched_alias(query, meta)
+                required_similarity = (
+                    float(sensitive_similarity) if is_sensitive else float(min_similarity)
+                )
+                if not matched_alias and sim < required_similarity:
+                    continue
+                ranking_similarity = max(sim, 0.95 if matched_alias else sim)
 
                 memories = _linked_memories(db, node["id"])
                 value_score = max(
@@ -292,10 +331,8 @@ def search(
                     [int(m["effective_use_count"]) for m in memories] or [0]
                 )
                 strength_score = min(1.0, (1.0 + math.log1p(effective_uses)) / 4.0)
-                if node["status"] == "休眠" and sim < 0.72:
-                    continue
                 score = retrieval_score(
-                    similarity=sim,
+                    similarity=ranking_similarity,
                     value_score=value_score,
                     activity_score_value=activity,
                     confidence=confidence,
@@ -305,7 +342,6 @@ def search(
                 if score < min_score:
                     continue
 
-                meta = _json_loads(node["metadata"], {})
                 detail = meta.get("detail") or meta.get("content") or meta.get("summary") or ""
                 results.append(
                     {
@@ -314,6 +350,7 @@ def search(
                         "type": node["type"],
                         "score": round(score, 4),
                         "sim": round(sim, 4),
+                        "matched_alias": matched_alias,
                         "activity_score": round(activity, 4),
                         "status": node["status"],
                         "value_score": value_score,
@@ -321,6 +358,7 @@ def search(
                         "path": _get_parent_path(db, node["id"]),
                         "detail": str(detail),
                         "metadata": meta,
+                        "sensitive": is_sensitive,
                         "memories": memories,
                         "edges": _connected_edges(db, node["id"]),
                     }

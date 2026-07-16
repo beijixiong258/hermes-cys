@@ -46,13 +46,11 @@ def graph_nodes_with_lifecycle(db, order_by="n.value_score DESC"):
                COALESCE(MAX(m.retrieval_count), 0) AS retrieval_count,
                COALESCE(MAX(m.effective_use_count), 0) AS effective_use_count,
                MAX(m.last_used_at) AS last_used_at,
-               MAX(m.reinforced_at) AS reinforced_at,
-               MIN(m.dormant_at) AS dormant_at,
-               MIN(m.forget_after) AS forget_after
+               MAX(m.reinforced_at) AS reinforced_at
         FROM graph_nodes n
         LEFT JOIN memory_node_links l ON l.node_id=n.id
-        LEFT JOIN memories m ON m.id=l.memory_id AND m.status IN ('活跃','休眠')
-        WHERE n.status IN ('活跃','休眠')
+        LEFT JOIN memories m ON m.id=l.memory_id AND m.status='活跃'
+        WHERE n.status='活跃'
         GROUP BY n.id
         ORDER BY {order_by}
         """
@@ -67,8 +65,8 @@ def api_memories():
         "SELECT id, content, type, layer, source, status, "
         "confidence, importance, value_score, activity_score, protected, "
         "use_count, retrieval_count, effective_use_count, last_used_at, "
-        "reinforced_at, dormant_at, forget_after, created_at, updated_at "
-        "FROM memories ORDER BY value_score DESC"
+        "reinforced_at, created_at, updated_at "
+        "FROM memories WHERE status<>'休眠' ORDER BY value_score DESC"
     ).fetchall()
     db.close()
     return jsonify([dict(r) for r in rows])
@@ -130,7 +128,7 @@ def api_graph():
     db = get_db()
     nodes = graph_nodes_with_lifecycle(db)
     all_edges = [dict(r) for r in db.execute(
-        "SELECT * FROM graph_edges WHERE status IN ('活跃','休眠')"
+        "SELECT * FROM graph_edges WHERE status='活跃'"
     ).fetchall()]
     # filter out orphan edges (source or target not in active nodes)
     node_ids = {n["id"] for n in nodes}
@@ -153,7 +151,7 @@ def api_tree():
     parent_edges = db.execute(
         "SELECT source_node_id, target_node_id FROM graph_edges "
         "WHERE relation IN ('属于','包含','子类','subcategory_of','parent') "
-        "AND status IN ('活跃','休眠')"
+        "AND status='活跃'"
     ).fetchall()
     db.close()
 
@@ -325,11 +323,11 @@ def api_edge(edge_id):
 @app.route("/api/stats")
 def api_stats():
     db = get_db()
-    mem_count = db.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
-    node_count = db.execute("SELECT COUNT(*) FROM graph_nodes WHERE status IN ('活跃','休眠')").fetchone()[0]
-    edge_count = db.execute("SELECT COUNT(*) FROM graph_edges WHERE status IN ('活跃','休眠')").fetchone()[0]
+    mem_count = db.execute("SELECT COUNT(*) FROM memories WHERE status<>'休眠'").fetchone()[0]
+    node_count = db.execute("SELECT COUNT(*) FROM graph_nodes WHERE status='活跃'").fetchone()[0]
+    edge_count = db.execute("SELECT COUNT(*) FROM graph_edges WHERE status='活跃'").fetchone()[0]
     types = {r[0]: r[1] for r in db.execute(
-        "SELECT type, COUNT(*) FROM graph_nodes WHERE status IN ('活跃','休眠') GROUP BY type"
+        "SELECT type, COUNT(*) FROM graph_nodes WHERE status='活跃' GROUP BY type"
     ).fetchall()}
     db.close()
     return jsonify({
@@ -359,7 +357,7 @@ def api_search():
         like = f"%{query}%"
         rows = db.execute(
             "SELECT id, label, type, value_score, confidence, metadata "
-            "FROM graph_nodes WHERE status IN ('活跃','休眠') "
+            "FROM graph_nodes WHERE status='活跃' "
             "AND (label LIKE ? OR json_extract(metadata, '$.detail') LIKE ?) "
             "ORDER BY value_score DESC LIMIT ?",
             (like, like, min(int(request.args.get("limit", 10)), 50))

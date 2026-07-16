@@ -36,11 +36,30 @@ description: |
 - `activity_score`：按 `exp(-间隔天数 / memory_strength)` 衰减。
 - `retrieval_count`：仅记录被召回次数；**召回不等于有效使用，不得刷新遗忘锚点**。
 - `effective_use_count`：记忆同时与用户问题和助手实际回答相关时才增加，并将 `decay_anchor_at`、`reinforced_at`、`activity_score` 重置。
-- 状态：`活跃 → 休眠 → 遗忘（物理删除）`；`protected=1` 永不自动遗忘。
-- 休眠记忆只有在语义相似度达到唤醒阈值时参与召回。
-- 遗忘必须经过休眠宽限期，并用同一事务级联清理 memory、links、无其他证据的 nodes 和 edges。
+- 状态只使用 `活跃`；不再进入逻辑休眠。`protected=1` 永不自动遗忘。
+- 未保护记忆同时满足 `activity_score < yiwang_yuzhi` 与 `value_score < yiwang_jiazhi_yuzhi` 时，立即在同一事务中物理删除 memory、links、无其他证据的 nodes 和 edges。
+- `dormant_at`、`forget_after` 仅为兼容旧表保留，不参与当前策略。
 
-生命周期列：`activity_score`、`decay_anchor_at`、`reinforced_at`、`retrieval_count`、`effective_use_count`、`protected`、`dormant_at`、`forget_after`。参数位于 `~/.hermes/value_lifecycle.json` 的 `shengmingzhouqi`。
+生命周期列：`activity_score`、`decay_anchor_at`、`reinforced_at`、`retrieval_count`、`effective_use_count`、`protected`。参数位于 `~/.hermes/value_lifecycle.json` 的 `shengmingzhouqi`。
+
+## 召回策略（2026-07）
+
+当前采用“启动索引 → 语义图谱 → 图谱不可用时证据层兜底”：
+
+1. `USER.md` / `MEMORY.md` 只固定注入极少数全局铁律；`zuida_quanju_pianhao=0`，禁止插件每轮再注入一批高价值偏好。
+2. 图谱先做语义硬门槛，再排序：普通节点相似度默认 ≥0.63；敏感节点默认 ≥0.72。
+3. 排序权重：语义相关度 60%、置信/规则优先级 15%、价值 10%、活跃度 10%、有效使用强度 5%，另有小额字符成本惩罚。高价值不能挽救低相关记忆。
+4. `metadata.aliases` 可为短技术名或混合语言查询提供明确领域路由。别名必须人工语义策划，使用具体领域词（如 `hermes-cys`、`dify`、`香港服务器`），不得加入 `python`、`项目`、`提交` 等宽泛词。
+5. 敏感节点设置 `metadata.sensitive=true`；只有达到敏感语义门槛或命中该节点的明确领域别名才允许召回。
+6. 最高结果动态窗口默认 0.12，最多 5 个节点；总注入预算 1000 字符、单项 220 字符。
+7. 注入内容只输出清洗后的 detail，不输出 score、sim、内部 ID 或“属于”边；detail 与 evidence 重复时只输出 detail。
+8. 证据层词法检索只在图谱禁用或图谱运行失败时兜底。图谱正常但没有合格结果时返回空，不能用低分词法结果绕过语义硬门槛。
+
+代表性 smoke test 至少覆盖：
+- `hermes-cys` → 只召回专用上传规则；
+- `Dify`、`TypeScript`、`香港服务器` → 各召回对应领域；
+- 天气、普通 Python 函数 → 空召回；
+- 每个结果不超过字符预算且不含 `score=`、关联边等内部信息。
 
 系统 Markdown 已改为最小启动索引；详细事实以 `state.db` 为证据超集并按需召回。整理前仍须逐条验证旧 Markdown 内容在活跃 memories 中精确或语义覆盖，并用代表性查询确认召回结果不超过配置字符预算。
 

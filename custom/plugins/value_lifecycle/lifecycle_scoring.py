@@ -14,11 +14,8 @@ from typing import Optional
 @dataclass(frozen=True)
 class LifecyclePolicy:
     base_decay_days: float = 30.0
-    dormant_threshold: float = 0.25
     forget_threshold: float = 0.08
     forget_value_threshold: float = 0.55
-    forget_grace_days: int = 14
-    wake_threshold: float = 0.72
 
 
 def clamp(value: float) -> float:
@@ -72,15 +69,21 @@ def retrieval_score(
     strength_score: float,
     token_cost: int,
 ) -> float:
-    """Combine semantic relevance with lifecycle quality under token cost."""
-    quality = (
-        0.45 * clamp(value_score)
-        + 0.30 * clamp(activity_score_value)
-        + 0.20 * clamp(confidence)
+    """Rank already-relevant memories; similarity remains dominant.
+
+    Callers must apply their semantic hard gate before using this score.  This
+    formula deliberately prevents a valuable but unrelated preference from
+    outranking a directly relevant fact.
+    """
+    score = (
+        0.60 * clamp(similarity)
+        + 0.15 * clamp(confidence)
+        + 0.10 * clamp(value_score)
+        + 0.10 * clamp(activity_score_value)
         + 0.05 * clamp(strength_score)
     )
-    cost_penalty = min(0.15, max(0, int(token_cost)) / 4000.0)
-    return clamp(clamp(similarity) * quality - cost_penalty)
+    cost_penalty = min(0.08, max(0, int(token_cost)) / 6000.0)
+    return clamp(score - cost_penalty)
 
 
 def lifecycle_decision(
@@ -88,28 +91,21 @@ def lifecycle_decision(
     value_score: float,
     activity_score_value: float,
     protected: bool,
-    dormant_since: Optional[datetime],
     now: Optional[datetime] = None,
     policy: Optional[LifecyclePolicy] = None,
 ) -> str:
-    """Return ``active``, ``dormant`` or ``forgotten``.
+    """Return ``active`` or ``forgotten``.
 
-    Forgetting requires low activity, low value, and a completed dormant grace
-    period. This prevents a single maintenance pass from deleting a memory.
+    There is no logical dormancy state: an unprotected memory is physically
+    deleted as soon as both activity and value are below the configured
+    forgetting thresholds. Protected and high-value memories stay active.
     """
     cfg = policy or LifecyclePolicy()
-    current = ensure_utc(now or datetime.now(timezone.utc))
     if protected:
-        return "active"
-    if clamp(activity_score_value) >= cfg.dormant_threshold:
         return "active"
     if (
         clamp(activity_score_value) < cfg.forget_threshold
         and clamp(value_score) < cfg.forget_value_threshold
-        and dormant_since is not None
     ):
-        dormant_at = ensure_utc(dormant_since)
-        dormant_days = max(0.0, (current - dormant_at).total_seconds() / 86400.0)
-        if dormant_days >= max(0, cfg.forget_grace_days):
-            return "forgotten"
-    return "dormant"
+        return "forgotten"
+    return "active"

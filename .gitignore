@@ -17,3 +17,7 @@ __pycache__/
 .cache/
 .curator_backups/
 .hub/
+.bundled_manifest
+.curator_state
+.usage.json
+.usage.json.lock
