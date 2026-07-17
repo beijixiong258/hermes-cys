@@ -515,12 +515,6 @@ class CLICommandsMixin:
         print(f"  Home:    {display}")
         print()
 
-    def _handle_zhuangtai_command(self) -> None:
-        """Show Hermes, Codex quota, proxy, IP, and approximate location."""
-        from hermes_cli.system_status import collect_status, render_status
-
-        print(render_status(collect_status(model=getattr(self, "model", ""), provider=getattr(self, "provider", ""))))
-
     def _handle_handoff_command(self, cmd_original: str) -> bool:
         """Handle ``/handoff <platform>`` — transfer this CLI session to a gateway platform.
 

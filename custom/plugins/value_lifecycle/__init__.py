@@ -1230,10 +1230,10 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
                     "NULLIF(last_used_at,''), updated_at, created_at) "
                     "WHERE reinforced_at IS NULL OR reinforced_at=''"
                 )
-                conn.execute(
-                    "UPDATE memories SET protected=1 "
-                    "WHERE type IN ('yonghu_pianhao','liucheng') AND layer='changqi'"
-                )
+                # Protection is an explicit semantic decision, never a blanket
+                # consequence of memory type/layer. Existing curated values are
+                # preserved; new memories default to unprotected unless their
+                # metadata explicitly requests protection.
                 cols = {row["name"] for row in conn.execute("PRAGMA table_info(graph_nodes)").fetchall()}
                 if "embedding" not in cols:
                     conn.execute("ALTER TABLE graph_nodes ADD COLUMN embedding TEXT")
@@ -1293,7 +1293,7 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
                             self._json_dumps(metadata),
                             now,
                             now,
-                            1 if candidate.source == "memory_tool" and candidate.layer == "changqi" else 0,
+                            1 if bool(candidate.metadata.get("protected", False)) else 0,
                             merge_row.id,
                         ),
                     )
@@ -1358,7 +1358,7 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
                         now,
                         0,
                         0,
-                        1 if candidate.source == "memory_tool" and candidate.layer == "changqi" else 0,
+                        1 if bool(candidate.metadata.get("protected", False)) else 0,
                         None,
                         None,
                     ),
@@ -1510,7 +1510,7 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
                         conn.execute(
                             """
                             UPDATE memories
-                            SET status = , updated_at = ?
+                            SET status = '旧', updated_at = ?
                             WHERE id = ?
                             """,
                             (now, row.id),
@@ -1716,9 +1716,9 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
                 """
                 UPDATE graph_nodes
                 SET label = ?, type = ?, status = CASE
-                        WHEN status =  THEN status
-                        WHEN ? = '活跃' THEN status
-                        ELSE ?
+                    WHEN status = '活跃' THEN status
+                    WHEN ? = '活跃' THEN '活跃'
+                    ELSE ?
                     END,
                     confidence = ?, value_score = ?, updated_at = ?,
                     metadata = ?
@@ -1787,8 +1787,8 @@ class JiazhiShengmingzhouqiJiyiTigongzhe(MemoryProvider):
                 """
                 UPDATE graph_edges
                 SET status = CASE
-                        WHEN status =  THEN status
-                        WHEN ? = '活跃' THEN status
+                        WHEN status = '活跃' THEN status
+                        WHEN ? = '活跃' THEN '活跃'
                         ELSE ?
                     END,
                     confidence = ?, value_score = ?, updated_at = ?,

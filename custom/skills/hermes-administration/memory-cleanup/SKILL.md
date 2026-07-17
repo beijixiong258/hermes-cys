@@ -37,6 +37,7 @@ description: |
 - `retrieval_count`：仅记录被召回次数；**召回不等于有效使用，不得刷新遗忘锚点**。
 - `effective_use_count`：记忆同时与用户问题和助手实际回答相关时才增加，并将 `decay_anchor_at`、`reinforced_at`、`activity_score` 重置。
 - 状态只使用 `活跃`；不再进入逻辑休眠。`protected=1` 永不自动遗忘。
+- `protected` 必须由逐条语义审计或显式 `metadata.protected=true` 决定；禁止按 `yonghu_pianhao`、`liucheng`、`changqi` 等 type/layer 批量永久保护。新记忆默认 `protected=0`。核心身份、不可违背铁律、安全边界等才可保护；普通但有用的信息依靠足够高的 `value_score` 保留。
 - 未保护记忆同时满足 `activity_score < yiwang_yuzhi` 与 `value_score < yiwang_jiazhi_yuzhi` 时，立即在同一事务中物理删除 memory、links、无其他证据的 nodes 和 edges。
 - `dormant_at`、`forget_after` 仅为兼容旧表保留，不参与当前策略。
 

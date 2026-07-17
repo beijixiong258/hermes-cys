@@ -80,8 +80,7 @@ def test_retrieval_does_not_reinforce_but_adoption_does(provider):
         memory_id = row[0]
         original_value = row[1]
         assert row[2] == pytest.approx(1.0)
-        assert row[3] == 1
-
+        assert row[3] == 0
     recalled = instance.prefetch("技术说明应该用什么语言？")
     assert "中文" in recalled
     assert "score=" not in recalled
@@ -113,6 +112,19 @@ def test_retrieval_does_not_reinforce_but_adoption_does(provider):
         assert row[1] == 1
         assert row[2]
         assert row[3] == pytest.approx(1.0)
+
+
+def test_protection_requires_explicit_metadata(provider):
+    instance, db_path = provider
+    instance.on_memory_write(
+        "add",
+        "user",
+        "这是明确要求永久保护的核心规则。",
+        {"protected": True},
+    )
+
+    with sqlite3.connect(db_path) as db:
+        assert db.execute("SELECT protected FROM memories").fetchone()[0] == 1
 
 
 def test_maintenance_directly_cascade_forgets_low_value_memory(provider):
