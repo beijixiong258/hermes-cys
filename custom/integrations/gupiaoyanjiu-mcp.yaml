@@ -1,0 +1,17 @@
+# 非秘密的 MCP 恢复说明；不包含 API Key、Token 或用户数据。
+name: gupiaoyanjiu
+transport: stdio
+command: /mnt/c/Users/user/PycharmProjects/gupiaoyanjiu/venv/Scripts/gpyj-mcp.exe
+connect_timeout: 60
+timeout: 600
+tools:
+  - gupiao_fenxi
+  - gupiao_yuce
+  - bankuai_xuangu
+restore_command: >-
+  hermes mcp add gupiaoyanjiu --connect-timeout 60 --command
+  /mnt/c/Users/user/PycharmProjects/gupiaoyanjiu/venv/Scripts/gpyj-mcp.exe
+notes:
+  - 注册后将 mcp_servers.gupiaoyanjiu.timeout 设置为 600。
+  - Windows 项目必须继续使用项目内 Windows venv，不能改用 WSL venv。
+  - 新建 Hermes 会话后工具才会载入。
