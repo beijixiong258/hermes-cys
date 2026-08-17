@@ -31,13 +31,11 @@ _DEFAULT_PLATFORM_TOOLSETS = {
 
 # Maps a tools_config provider's ``managed_nous_feature`` to the tool-pool
 # coverage category (hermes_cli.nous_account.TOOL_COVERAGE_CATEGORIES). Lets the
-# `hermes tools` picker scope its entitlement gate to the selected backend, so a
-# free-tool-pool user is allowed image gen but denied video gen at select time —
-# consistent with the per-category feature gates in get_nous_subscription_features.
+# `hermes tools` picker scope its entitlement gate to the selected backend.
 MANAGED_FEATURE_COVERAGE_CATEGORY: Dict[str, str] = {
     "web": "firecrawl",
     "image_gen": "fal",
-    "video_gen": "fal-video",
+
     "tts": "openai-audio",
     # STT shares the TTS coverage category: both ride the managed
     # "openai-audio" gateway endpoint (speech + transcriptions).
@@ -96,16 +94,13 @@ class NousSubscriptionFeatures:
     def browser(self) -> NousFeatureState:
         return self.features["browser"]
 
-    @property
-    def video_gen(self) -> NousFeatureState:
-        return self.features["video_gen"]
 
     @property
     def modal(self) -> NousFeatureState:
         return self.features["modal"]
 
     def items(self) -> Iterable[NousFeatureState]:
-        ordered = ("web", "image_gen", "video_gen", "tts", "stt", "browser", "modal")
+        ordered = ("web", "image_gen", "tts", "stt", "browser", "modal")
         for key in ordered:
             yield self.features[key]
 
@@ -159,35 +154,59 @@ def _toolset_enabled(config: Dict[str, object], toolset_key: str) -> bool:
 def _has_agent_browser() -> bool:
     import shutil
 
-    from hermes_constants import agent_browser_runnable, with_hermes_node_path
+    from hermes_constants import agent_browser_runnable
 
-    # Validate the resolved binary actually runs — a dangling global symlink
-    # (issue #48521) is reported by ``which`` but fails at exec. Fall through to
-    # the local node_modules copy, which the validator also checks.
-    if agent_browser_runnable(shutil.which("agent-browser")):
-        return True
-
-    # Hermes-managed Node dirs (Windows installer / POSIX $HERMES_HOME/node)
-    # are prepended to PATH at runtime but usually absent from the *probe*
-    # process's PATH — the same rung `_find_agent_browser` searches. Without
-    # it a successful install keeps reporting "needs setup" on Windows.
-    managed_path = with_hermes_node_path().get("PATH", "")
-    if managed_path:
-        managed_hit = shutil.which("agent-browser", path=managed_path)
-        if managed_hit and agent_browser_runnable(managed_hit):
+    # agent-browser is no longer a root package.json dependency (#43564) — it
+    # resolves lazily via npx for most installs, which a bare PATH +
+    # node_modules probe can't see. Mirror the local-CLI tail of
+    # :func:`tools.browser_tool.check_browser_requirements` (same cascade, same
+    # Termux carve-out) so the setup/status surfaces can't diverge from what
+    # browser tools actually find at runtime; validate=False keeps this a cheap
+    # existence check with no subprocess spawn.
+    try:
+        from tools.browser_tool import (
+            _find_agent_browser,
+            _requires_real_termux_browser_install,
+        )
+    except Exception:
+        # If the runtime probe can't be imported, fall back to binary presence
+        # (prior behaviour) rather than crashing the setup/status surface.
+        # Validate the resolved binary actually runs — a dangling global
+        # symlink (issue #48521) is reported by ``which`` but fails at exec.
+        if agent_browser_runnable(shutil.which("agent-browser")):
             return True
 
-    # Local node_modules/.bin: resolve via PATHEXT-aware ``shutil.which`` so
-    # Windows picks the executable ``.cmd`` shim. Probing the extensionless
-    # POSIX shim directly fails exec (WinError 193) even right after a
-    # successful ``npm install`` — the bug that pinned every browser row on
-    # "Setup required" in the desktop GUI.
-    local_bin_dir = Path(__file__).parent.parent / "node_modules" / ".bin"
-    if local_bin_dir.is_dir():
-        local_which = shutil.which("agent-browser", path=str(local_bin_dir))
-        if local_which and agent_browser_runnable(local_which):
-            return True
-    return False
+        # Hermes-managed Node dirs (Windows installer / POSIX $HERMES_HOME/node)
+        # are prepended to PATH at runtime but usually absent from the *probe*
+        # process's PATH. Without this rung a successful install keeps
+        # reporting "needs setup" on Windows.
+        from hermes_constants import with_hermes_node_path
+        managed_path = with_hermes_node_path().get("PATH", "")
+        if managed_path:
+            managed_hit = shutil.which("agent-browser", path=managed_path)
+            if managed_hit and agent_browser_runnable(managed_hit):
+                return True
+
+        # Local node_modules/.bin: resolve via PATHEXT-aware ``shutil.which`` so
+        # Windows picks the executable ``.cmd`` shim — probing the
+        # extensionless POSIX shim directly fails exec (WinError 193) even
+        # right after a successful ``npm install``.
+        local_bin_dir = Path(__file__).parent.parent / "node_modules" / ".bin"
+        if local_bin_dir.is_dir():
+            local_which = shutil.which("agent-browser", path=str(local_bin_dir))
+            if local_which and agent_browser_runnable(local_which):
+                return True
+        return False
+
+    try:
+        browser_cmd = _find_agent_browser(validate=False)
+    except FileNotFoundError:
+        return False
+    # On Termux, the bare npx fallback is too fragile to advertise as ready —
+    # require a real install, matching check_browser_requirements.
+    if _requires_real_termux_browser_install(browser_cmd):
+        return False
+    return True
 
 
 def _local_browser_runnable() -> bool:
@@ -364,8 +383,7 @@ def get_nous_subscription_features(
         account_info = None
 
     # Coarse "entitled to any managed tool" gate: paid access OR a live free
-    # tool pool. Per-backend availability is then narrowed by coverage below
-    # (the pool funds image but not video, etc.).
+    # tool pool. Per-backend availability is then narrowed by coverage below.
     managed_tools_flag = bool(
         account_info
         and account_info.logged_in
@@ -379,7 +397,7 @@ def get_nous_subscription_features(
 
     web_tool_enabled = _toolset_enabled(config, "web")
     image_tool_enabled = _toolset_enabled(config, "image_gen")
-    video_tool_enabled = _toolset_enabled(config, "video_gen")
+
     tts_tool_enabled = _toolset_enabled(config, "tts")
     browser_tool_enabled = _toolset_enabled(config, "browser")
     modal_tool_enabled = _toolset_enabled(config, "terminal")
@@ -420,8 +438,7 @@ def get_nous_subscription_features(
     browser_use_gateway = _uses_gateway(browser_cfg)
     image_gen_cfg = config.get("image_gen") if isinstance(config.get("image_gen"), dict) else {}
     image_use_gateway = _uses_gateway(image_gen_cfg)
-    video_gen_cfg = config.get("video_gen") if isinstance(config.get("video_gen"), dict) else {}
-    video_use_gateway = _uses_gateway(video_gen_cfg)
+
 
     direct_exa = bool(get_env_value("EXA_API_KEY"))
     direct_firecrawl = bool(get_env_value("FIRECRAWL_API_KEY") or get_env_value("FIRECRAWL_API_URL"))
@@ -429,7 +446,7 @@ def get_nous_subscription_features(
     direct_tavily = bool(get_env_value("TAVILY_API_KEY"))
     direct_searxng = bool(get_env_value("SEARXNG_URL"))
     direct_fal = fal_key_is_configured()
-    direct_fal_video = direct_fal  # same FAL_KEY; separate var so use_gateway is independent
+
     direct_openai_tts = bool(resolve_openai_audio_api_key())
     direct_elevenlabs = bool(get_env_value("ELEVENLABS_API_KEY"))
     direct_camofox = bool(get_env_value("CAMOFOX_URL"))
@@ -461,8 +478,7 @@ def get_nous_subscription_features(
         direct_tavily = False
     if image_use_gateway:
         direct_fal = False
-    if video_use_gateway:
-        direct_fal_video = False
+
     if tts_use_gateway:
         direct_openai_tts = False
         direct_elevenlabs = False
@@ -487,15 +503,7 @@ def get_nous_subscription_features(
         and is_managed_tool_gateway_ready("fal-queue")
         and _entitled_for("fal")
     )
-    # Video gen rides the same fal-queue gateway as image gen, but the free tool
-    # pool funds image and NOT video — so gate it on its own coverage category
-    # rather than aliasing it to image. (Paid users are entitled to both.)
-    managed_video_available = (
-        managed_tools_flag
-        and nous_auth_present
-        and is_managed_tool_gateway_ready("fal-queue")
-        and _entitled_for("fal-video")
-    )
+
     managed_tts_available = (
         managed_tools_flag
         and nous_auth_present
@@ -552,9 +560,6 @@ def get_nous_subscription_features(
     image_active = bool(image_tool_enabled and (image_managed or direct_fal))
     image_available = bool(managed_image_available or direct_fal)
 
-    video_managed = video_tool_enabled and managed_video_available and not direct_fal_video
-    video_active = bool(video_tool_enabled and (video_managed or direct_fal_video))
-    video_available = bool(managed_video_available or direct_fal_video)
 
     tts_current_provider = tts_provider or "edge"
     tts_managed = (
@@ -677,18 +682,7 @@ def get_nous_subscription_features(
             current_provider="FAL" if direct_fal else ("Nous Subscription" if image_managed else ""),
             explicit_configured=direct_fal,
         ),
-        "video_gen": NousFeatureState(
-            key="video_gen",
-            label="Video generation",
-            included_by_default=False,
-            available=video_available,
-            active=video_active,
-            managed_by_nous=video_managed,
-            direct_override=video_active and not video_managed,
-            toolset_enabled=video_tool_enabled,
-            current_provider="FAL" if direct_fal_video else ("Nous Subscription" if video_managed else ""),
-            explicit_configured=direct_fal_video,
-        ),
+
         "tts": NousFeatureState(
             key="tts",
             label="OpenAI TTS",
@@ -848,20 +842,6 @@ def apply_nous_managed_defaults(
         image_cfg["use_gateway"] = True
         changed.add("image_gen")
 
-    # Video gen is not funded by the free tool pool, so only wire managed video
-    # defaults for users entitled to it (paid). Pool-only users keep video off.
-    if (
-        "video_gen" in selected_toolsets
-        and not fal_key_is_configured()
-        and features.account_info.tool_gateway_entitled_for("fal-video")
-    ):
-        video_cfg = config.get("video_gen")
-        if not isinstance(video_cfg, dict):
-            video_cfg = {}
-            config["video_gen"] = video_cfg
-        video_cfg["provider"] = "fal"
-        video_cfg["use_gateway"] = True
-        changed.add("video_gen")
 
     return changed
 
@@ -873,7 +853,7 @@ def apply_nous_managed_defaults(
 _GATEWAY_TOOL_LABELS = {
     "web": "Web search & extract (Firecrawl)",
     "image_gen": "Image generation (FAL)",
-    "video_gen": "Video generation (FAL)",
+
     "tts": "Text-to-speech (OpenAI TTS)",
     "stt": "Speech-to-text (OpenAI Whisper)",
     "browser": "Browser automation (Browser Use)",
@@ -892,7 +872,7 @@ def _get_gateway_direct_credentials() -> Dict[str, bool]:
             or get_env_value("EXA_API_KEY")
         ),
         "image_gen": fal_direct,
-        "video_gen": fal_direct,
+
         "tts": bool(
             resolve_openai_audio_api_key()
             or get_env_value("ELEVENLABS_API_KEY")
@@ -916,13 +896,13 @@ def _get_gateway_direct_credentials() -> Dict[str, bool]:
 _GATEWAY_DIRECT_LABELS = {
     "web": "Firecrawl/Exa/Parallel/Tavily key",
     "image_gen": "FAL key",
-    "video_gen": "FAL key",
+
     "tts": "OpenAI/ElevenLabs key",
     "stt": "OpenAI/Groq/Mistral key",
     "browser": "Browser Use/Browserbase key",
 }
 
-_ALL_GATEWAY_KEYS = ("web", "image_gen", "video_gen", "tts", "stt", "browser")
+_ALL_GATEWAY_KEYS = ("web", "image_gen", "tts", "stt", "browser")
 
 
 def get_gateway_eligible_tools(
@@ -940,8 +920,7 @@ def get_gateway_eligible_tools(
     is not using Nous as their provider.
     """
     # Fetch entitlement once: it gates the offer (paid access OR a live free tool
-    # pool) AND tells us which categories are covered (the pool funds image but
-    # not video, etc.). Fails closed on any error.
+    # pool) AND tells us which categories are covered. Fails closed on any error.
     try:
         account_info = get_nous_portal_account_info(force_fresh=force_fresh)
     except Exception:
@@ -966,7 +945,7 @@ def get_gateway_eligible_tools(
     opted_in = {
         "web": _uses_gateway(config.get("web")),
         "image_gen": _uses_gateway(config.get("image_gen")),
-        "video_gen": _uses_gateway(config.get("video_gen")),
+
         "tts": _uses_gateway(config.get("tts")),
         "stt": _uses_gateway(config.get("stt")),
         "browser": _uses_gateway(config.get("browser")),
@@ -977,8 +956,7 @@ def get_gateway_eligible_tools(
     already_managed: list[str] = []
     for key in _ALL_GATEWAY_KEYS:
         # Only offer tools the user's entitlement actually covers. For a free
-        # tool pool that means image but not video; paid users are covered for
-        # everything.
+        # tool pool and paid access may cover different categories.
         if not account_info.tool_gateway_entitled_for(
             MANAGED_FEATURE_COVERAGE_CATEGORY[key]
         ):
@@ -1053,14 +1031,6 @@ def apply_gateway_defaults(
         image_cfg["use_gateway"] = True
         changed.add("image_gen")
 
-    if "video_gen" in tool_keys:
-        video_cfg = config.get("video_gen")
-        if not isinstance(video_cfg, dict):
-            video_cfg = {}
-            config["video_gen"] = video_cfg
-        video_cfg["provider"] = "fal"
-        video_cfg["use_gateway"] = True
-        changed.add("video_gen")
 
     return changed
 
@@ -1075,9 +1045,8 @@ def prompt_enable_tool_gateway(
 
     "Pool enabled" is the trigger: a user with a live free tool pool (or paid
     access) is shown a per-tool checklist of the covered managed backends and
-    picks which to route through the gateway. The free pool funds web/image/
-    tts/browser but not video, so the checklist only lists covered tools (the
-    coverage filter lives in get_gateway_eligible_tools).
+    picks which to route through the gateway. The checklist only lists covered
+    tools (the coverage filter lives in get_gateway_eligible_tools).
 
     Returns the set of tools that were enabled, or empty set if the user
     declined or no tools were eligible.

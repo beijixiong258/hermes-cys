@@ -108,7 +108,6 @@ def register(ctx):
 | 通过 pip 分发 | `[project.entry-points."hermes_agent.plugins"]` |
 | 注册 gateway 平台（Discord、Telegram、IRC 等） | `ctx.register_platform(name, label, adapter_factory, check_fn, ...)` — 参见 [Adding Platform Adapters](/developer-guide/adding-platform-adapters) |
 | 注册图像生成后端 | `ctx.register_image_gen_provider(provider)` — 参见 [Image Generation Provider Plugins](/developer-guide/image-gen-provider-plugin) |
-| 注册视频生成后端 | `ctx.register_video_gen_provider(provider)` — 参见 [Video Generation Provider Plugins](/developer-guide/video-gen-provider-plugin) |
 | 注册上下文压缩引擎 | `ctx.register_context_engine(engine)` — 参见 [Context Engine Plugins](/developer-guide/context-engine-plugin) |
 | 注册 memory 后端 | 在 `plugins/memory/<name>/__init__.py` 中继承 `MemoryProvider` — 参见 [Memory Provider Plugins](/developer-guide/memory-provider-plugin)（使用独立发现系统） |
 | 调用宿主 LLM | `ctx.llm.complete(...)` / `ctx.llm.complete_structured(...)` — 借用用户当前激活的模型和认证，进行一次性补全，支持可选 JSON schema 验证。参见 [Plugin LLM Access](/developer-guide/plugin-llm-access) |
@@ -227,7 +226,6 @@ Memory provider 和 context engine 是 **provider 插件** — 每种类型同�
 | **Memory 后端**（Honcho、Mem0、Supermemory 等） | Memory 插件 — 在 `plugins/memory/<name>/` 中继承 `MemoryProvider` | [Memory Provider Plugins](/developer-guide/memory-provider-plugin) |
 | **上下文压缩策略** | Context-engine 插件 — `ctx.register_context_engine()` | [Context Engine Plugins](/developer-guide/context-engine-plugin) |
 | **图像生成后端**（DALL·E、SDXL 等） | 后端插件 — `ctx.register_image_gen_provider()` | [Image Generation Provider Plugins](/developer-guide/image-gen-provider-plugin) |
-| **视频生成后端**（Veo、Kling、Pixverse、Grok-Imagine、Runway 等） | 后端插件 — `ctx.register_video_gen_provider()` | [Video Generation Provider Plugins](/developer-guide/video-gen-provider-plugin) |
 | **TTS 后端**（任意 CLI — Piper、VoxCPM、Kokoro、xtts、语音克隆脚本等） | 配置驱动（推荐）— 在 `config.yaml` 的 `tts.providers.<name>` 下以 `type: command` 声明。或 Python 后端插件 — 对需要超出 shell 模板的 Python SDK / 流式引擎使用 `ctx.register_tts_provider()`。 | [TTS Setup](/user-guide/features/tts#custom-command-providers) · [Python plugin guide](/user-guide/features/tts#python-plugin-providers) |
 | **STT 后端**（自定义 whisper 二进制、本地 ASR CLI） | 配置驱动 — 将 `HERMES_LOCAL_STT_COMMAND` 环境变量设置为 shell 模板 | [Voice Message Transcription (STT)](/user-guide/features/tts#voice-message-transcription-stt) |
 | **通过 MCP 使用外部工具**（文件系统、GitHub、Linear、Notion、任意 MCP 服务器） | 配置驱动 — 在 `config.yaml` 中以 `command:` / `url:` 声明 `mcp_servers.<name>`。Hermes 自动发现服务器的工具并与内置工具一同注册。 | [MCP](/user-guide/features/mcp) |

@@ -331,7 +331,7 @@ class Platform(Enum):
     SIGNAL = "signal"
     MATTERMOST = "mattermost"
     MATRIX = "matrix"
-    HOMEASSISTANT = "homeassistant"
+
     EMAIL = "email"
     SMS = "sms"
     DINGTALK = "dingtalk"
@@ -344,7 +344,7 @@ class Platform(Enum):
     WEIXIN = "weixin"
     BLUEBUBBLES = "bluebubbles"
     QQBOT = "qqbot"
-    YUANBAO = "yuanbao"
+
     RELAY = "relay"  # generic relay adapter fronted by the connector (EXPERIMENTAL)
     @classmethod
     def _missing_(cls, value):
@@ -411,11 +411,6 @@ class Platform(Enum):
         except Exception:
             pass
         return names
-
-
-# These legacy platforms remain as enum values so old source/tests can still
-# import the type, but they are not part of this build's runtime surface.
-DISABLED_PLATFORM_VALUES = frozenset({"homeassistant", "yuanbao"})
 
 
 # Snapshot of built-in platform values before any dynamic _missing_ lookups.
@@ -868,7 +863,7 @@ class StreamingConfig:
 # Each callable receives a ``PlatformConfig`` and returns ``True`` when the
 # platform is sufficiently configured to be considered "connected".  Platforms
 # that rely on the generic ``token or api_key`` check (Telegram, Discord,
-# Slack, Matrix, Mattermost, HomeAssistant) do not need an entry here.
+# Slack, Matrix, and Mattermost do not need an entry here.
 def _has_usable_api_server_key(key: object) -> bool:
     """True when API_SERVER_KEY is present and strong enough to be usable.
 
@@ -959,7 +954,7 @@ class GatewayConfig:
     filter_silence_narration: bool = True
 
     # STT settings
-    stt_enabled: bool = True  # Whether to auto-transcribe inbound voice messages
+    stt_enabled: bool = False  # Whether to auto-transcribe inbound voice messages
     stt_echo_transcripts: bool = True  # Whether to echo raw STT transcripts back to the user
 
     # Session isolation in shared chats
@@ -1146,8 +1141,6 @@ class GatewayConfig:
                 continue
             try:
                 platform = Platform(platform_name)
-                if platform.value in DISABLED_PLATFORM_VALUES:
-                    continue
                 platforms[platform] = PlatformConfig.from_dict(platform_data)
             except ValueError:
                 pass  # Skip unknown platforms
@@ -1160,8 +1153,6 @@ class GatewayConfig:
         for platform_name, policy_data in _coerce_dict(data.get("reset_by_platform", {})).items():
             try:
                 platform = Platform(platform_name)
-                if platform.value in DISABLED_PLATFORM_VALUES:
-                    continue
                 reset_by_platform[platform] = SessionResetPolicy.from_dict(policy_data)
             except ValueError:
                 pass
@@ -1268,7 +1259,7 @@ class GatewayConfig:
             filter_silence_narration=_coerce_bool(
                 data.get("filter_silence_narration"), True
             ),
-            stt_enabled=_coerce_bool(stt_enabled, True),
+            stt_enabled=_coerce_bool(stt_enabled, False),
             stt_echo_transcripts=_coerce_bool(stt_echo_transcripts, True),
             group_sessions_per_user=_coerce_bool(group_sessions_per_user, True),
             thread_sessions_per_user=_coerce_bool(thread_sessions_per_user, False),

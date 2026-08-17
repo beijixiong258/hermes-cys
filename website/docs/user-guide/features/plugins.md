@@ -110,7 +110,6 @@ Every `ctx.*` API below is available inside a plugin's `register(ctx)` function.
 | Distribute via pip | `[project.entry-points."hermes_agent.plugins"]` |
 | Register a gateway platform (Discord, Telegram, IRC, …) | `ctx.register_platform(name, label, adapter_factory, check_fn, ...)` — see [Adding Platform Adapters](/developer-guide/adding-platform-adapters) |
 | Register an image-generation backend | `ctx.register_image_gen_provider(provider)` — see [Image Generation Provider Plugins](/developer-guide/image-gen-provider-plugin) |
-| Register a video-generation backend | `ctx.register_video_gen_provider(provider)` — see [Video Generation Provider Plugins](/developer-guide/video-gen-provider-plugin) |
 | Register a context-compression engine | `ctx.register_context_engine(engine)` — see [Context Engine Plugins](/developer-guide/context-engine-plugin) |
 | Route human approval prompts | `ctx.register_approval_transport(name, present_fn)` — see [Approval transports](#approval-transports) |
 | Register a memory backend | Subclass `MemoryProvider` in `plugins/memory/<name>/__init__.py` — see [Memory Provider Plugins](/developer-guide/memory-provider-plugin) (uses a separate discovery system) |
@@ -298,7 +297,6 @@ The table above shows the four plugin categories, but within "General plugins" t
 | A **memory backend** (Honcho, Mem0, Supermemory, …) | Memory plugin — subclass `MemoryProvider` in `plugins/memory/<name>/` | [Memory Provider Plugins](/developer-guide/memory-provider-plugin) |
 | A **context-compression strategy** | Context-engine plugin — `ctx.register_context_engine()` | [Context Engine Plugins](/developer-guide/context-engine-plugin) |
 | An **image-generation backend** (DALL·E, SDXL, …) | Backend plugin — `ctx.register_image_gen_provider()` | [Image Generation Provider Plugins](/developer-guide/image-gen-provider-plugin) |
-| A **video-generation backend** (Veo, Kling, Pixverse, Grok-Imagine, Runway, …) | Backend plugin — `ctx.register_video_gen_provider()` | [Video Generation Provider Plugins](/developer-guide/video-gen-provider-plugin) |
 | A **TTS backend** (any CLI — Piper, VoxCPM, Kokoro, xtts, voice-cloning scripts, …) | Config-driven (recommended) — declare under `tts.providers.<name>` with `type: command` in `config.yaml`. OR Python backend plugin — `ctx.register_tts_provider()` for Python-SDK / streaming engines that need more than a shell template. | [TTS Setup](/user-guide/features/tts#custom-command-providers) · [Python plugin guide](/user-guide/features/tts#python-plugin-providers) |
 | An **STT backend** (any CLI — whisper.cpp, custom whisper binary, local ASR CLI) | Config-driven (recommended) — declare under `stt.providers.<name>` with `type: command` in `config.yaml`, or set `HERMES_LOCAL_STT_COMMAND` for the legacy single-command escape hatch. OR Python backend plugin — `ctx.register_transcription_provider()` for Python-SDK engines (OpenRouter, SenseAudio, Gemini-STT, etc.). | [STT Setup](/user-guide/features/tts#stt-custom-command-providers) · [Python plugin guide](/user-guide/features/tts#python-plugin-providers-stt) |
 | **External tools via MCP** (filesystem, GitHub, Linear, Notion, any MCP server) | Config-driven — declare `mcp_servers.<name>` with `command:` / `url:` in `config.yaml`. Hermes auto-discovers the server's tools and registers them alongside built-ins. | [MCP](/user-guide/features/mcp) |
@@ -586,6 +584,36 @@ listed as warning comments in the emitted YAML, not as installable entries.
 The `skills:` list is parsed and displayed at install time but not yet
 auto-installed — install those manually for now (`hermes skills`). Wiring
 skill-hub ids into pack install is a documented follow-up seam.
+
+### Install-time security scanning
+
+Every `hermes plugins install` and `hermes plugins update` runs a static
+security scan over the plugin tree before it is activated (inspired by
+Claude Cowork's skill & plugin security scanning). The scanner reuses the
+same threat-pattern engine as the [Skills Hub guard](/user-guide/features/skills)
+— exfiltration of credential stores, reverse shells, destructive commands,
+persistence mechanisms, obfuscated execution, and prompt injection in
+documentation files — with plugin-aware exemptions: a provider plugin
+reading its **own** API key from the environment (the documented
+`requires_env` pattern) is not flagged.
+
+Three verdicts, matching Cowork's pass/warn/fail:
+
+| Verdict | Behavior |
+|---|---|
+| **safe** | Installs normally, no extra output |
+| **caution** | Findings are shown; you confirm `Install anyway? [y/N]` (or pass `--force`) |
+| **dangerous** | Blocked. `--force` does **not** override |
+
+On `hermes plugins update`, a dangerous verdict on the updated tree
+disables the plugin until you review the findings and re-enable it.
+
+Scanning is on by default; disable it in `config.yaml`:
+
+```yaml
+plugins:
+  scan_on_install: false
+```
 
 ### Interactive UI
 

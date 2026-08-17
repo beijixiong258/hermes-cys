@@ -3,7 +3,7 @@
 // the lazy renderers (see ../registry.tsx) keyed off `renderer`.
 
 export type EmbedProvider =
-  'googlemaps' | 'instagram' | 'openstreetmap' | 'pinterest' | 'spotify' | 'tiktok' | 'twitter' | 'vimeo' | 'youtube'
+  'googlemaps' | 'instagram' | 'openstreetmap' | 'pinterest' | 'tiktok' | 'twitter' | 'vimeo' | 'youtube'
 
 /** Which lazy renderer materialises the descriptor. */
 export type EmbedRenderer = 'frame' | 'tweet'
@@ -11,7 +11,7 @@ export type EmbedRenderer = 'frame' | 'tweet'
 interface EmbedLayout {
   /** Frame aspect ratio (width / height). For video/maps. */
   aspectRatio?: number
-  /** Fixed pixel height for non-ratio embeds (Instagram, Pinterest, Spotify). */
+  /** Fixed pixel height for non-ratio embeds (Instagram, Pinterest). */
   height?: number
   /** Max rendered width in px; falls back to the conversation column. */
   maxWidth?: number

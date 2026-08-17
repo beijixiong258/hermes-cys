@@ -447,12 +447,12 @@ async def resolve_local_source_to_data_url(
 ) -> str:
     """Convert a path-like media source into a ``data:`` URL via the resolver.
 
-    Generation tools (image_generate / video_generate) forward model-supplied
+    Image generation tools forward model-supplied
     source images to provider plugins, which historically read local paths off
     the HOST filesystem regardless of terminal backend. Under a non-local
     backend that is both broken (the file usually lives in the sandbox, so the
     host read misses) and inconsistent with the confinement model vision/video
-    analysis enforce (GHSA-gpxw-6wxv-w3qq): the sandbox boundary should govern
+    analysis enforces (GHSA-gpxw-6wxv-w3qq): the sandbox boundary should govern
     every model-supplied path.
 
     This helper is the dispatch-layer chokepoint: URL-shaped sources

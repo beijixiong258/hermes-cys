@@ -1,7 +1,7 @@
 """Tests for the generation-tool source-image confinement chokepoint.
 
 Under a non-local terminal backend, model-supplied local paths passed to
-image_generate / video_generate must resolve through the sandbox-aware media
+image_generate must resolve through the sandbox-aware media
 resolver (tools.image_source) and reach providers as data: URLs — the same
 boundary vision/video analysis enforce. URLs pass through untouched and the
 local backend is a no-op.
@@ -111,22 +111,4 @@ class TestConfineSourceImages:
         assert payload["success"] is False
         assert dispatched == []
 
-    def test_video_generate_uses_same_chokepoint(self, monkeypatch, tmp_path):
-        """video_generate's handler routes its image sources through the
-        shared confinement helper too."""
-        import tools.video_generation_tool as vgt
 
-        monkeypatch.setenv("TERMINAL_ENV", "docker")
-        monkeypatch.setenv("HERMES_HOME", str(tmp_path / "h"))
-
-        import tools.image_source as isrc
-
-        monkeypatch.setattr(isrc, "_get_active_env", lambda tid: None)
-
-        out = vgt._handle_video_generate(
-            {"prompt": "animate", "image_url": str(tmp_path / "nope.png")},
-            task_id="t1",
-        )
-        payload = json.loads(out)
-        assert payload["success"] is False
-        assert "Could not read source image" in payload["error"]

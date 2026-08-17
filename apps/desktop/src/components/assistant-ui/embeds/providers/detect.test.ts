@@ -67,16 +67,7 @@ describe('detectEmbed — other frame providers', () => {
     )
   })
 
-  it('resolves Spotify tracks, collections, and locale-prefixed urls', () => {
-    expect(frame('https://open.spotify.com/track/4cOdK2wGLETKBW3PvgPWqT').embedUrl).toBe(
-      'https://open.spotify.com/embed/track/4cOdK2wGLETKBW3PvgPWqT'
-    )
-    expect(frame('https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M').provider).toBe('spotify')
-    expect(frame('https://open.spotify.com/intl-de/album/1DFixLWuPkv3KT3TnV35m3').id).toBe(
-      'spotify:album:1DFixLWuPkv3KT3TnV35m3'
-    )
-    expect(detectEmbed('https://open.spotify.com/track/')).toBeNull()
-  })
+
 })
 
 describe('detectEmbed — maps', () => {

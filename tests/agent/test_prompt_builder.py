@@ -380,7 +380,6 @@ class TestBuildNousSubscriptionPrompt:
                 features={
                     "web": NousFeatureState("web", "Web tools", True, True, True, True, False, True, "firecrawl"),
                     "image_gen": NousFeatureState("image_gen", "Image generation", True, True, True, True, False, True, "Nous Subscription"),
-                    "video_gen": NousFeatureState("video_gen", "Video generation", False, False, False, False, False, False, ""),
                     "tts": NousFeatureState("tts", "OpenAI TTS", True, True, True, True, False, True, "OpenAI TTS"),
                     "stt": NousFeatureState("stt", "Speech-to-text", True, True, True, True, False, True, "OpenAI Whisper"),
                     "browser": NousFeatureState("browser", "Browser automation", True, True, True, True, False, True, "Browser Use"),
@@ -406,7 +405,6 @@ class TestBuildNousSubscriptionPrompt:
                 features={
                     "web": NousFeatureState("web", "Web tools", True, False, False, False, False, True, ""),
                     "image_gen": NousFeatureState("image_gen", "Image generation", True, False, False, False, False, True, ""),
-                    "video_gen": NousFeatureState("video_gen", "Video generation", False, False, False, False, False, False, ""),
                     "tts": NousFeatureState("tts", "OpenAI TTS", True, False, False, False, False, True, ""),
                     "stt": NousFeatureState("stt", "Speech-to-text", True, False, False, False, False, True, ""),
                     "browser": NousFeatureState("browser", "Browser automation", True, False, False, False, False, True, ""),
@@ -514,6 +512,29 @@ class TestBuildContextFilesPrompt:
         from agent.prompt_builder import _load_agents_md
 
         assert _load_agents_md(sub) == ""
+
+    # --- AGENTS.override.md personal override (port of pi#7681) ---
+
+    def test_agents_override_md_wins_over_agents_md(self, tmp_path):
+        (tmp_path / "AGENTS.md").write_text("Use Ruff for linting.")
+        (tmp_path / "AGENTS.override.md").write_text("Use Black instead.")
+        result = build_context_files_prompt(cwd=str(tmp_path))
+        assert "Use Black instead" in result
+        assert "Ruff for linting" not in result
+        assert "AGENTS.override.md" in result
+
+    def test_agents_override_md_loads_alone(self, tmp_path):
+        (tmp_path / "AGENTS.override.md").write_text("Override-only context.")
+        result = build_context_files_prompt(cwd=str(tmp_path))
+        assert "Override-only context" in result
+        assert "Project Context" in result
+
+    def test_hermes_md_still_wins_over_agents_override(self, tmp_path):
+        (tmp_path / ".hermes.md").write_text("Hermes-first context.")
+        (tmp_path / "AGENTS.override.md").write_text("Override context.")
+        result = build_context_files_prompt(cwd=str(tmp_path))
+        assert "Hermes-first context" in result
+        assert "Override context" not in result
 
     def test_skips_agents_md_in_install_tree_on_fallback(self, monkeypatch, tmp_path):
         # A backend that FALLS BACK into the install tree (cwd=None → getcwd,

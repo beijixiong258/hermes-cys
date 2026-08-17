@@ -19,7 +19,6 @@ Hermes 有多种不同的可插拔接口——有些使用 Python `register_*` A
 | **记忆后端**（Honcho/Mem0/Supermemory 等） | [记忆提供商插件](/developer-guide/memory-provider-plugin) |
 | **上下文压缩引擎** | [上下文引擎插件](/developer-guide/context-engine-plugin) |
 | **图像生成后端** | [图像生成提供商插件](/developer-guide/image-gen-provider-plugin) |
-| **视频生成后端** | [视频生成提供商插件](/developer-guide/video-gen-provider-plugin) |
 | **网页搜索/提取后端** | [网页搜索提供商插件](/developer-guide/web-search-provider-plugin) |
 | **云浏览器后端**（Browserbase 类 CDP 会话提供商） | [浏览器提供商插件](/developer-guide/browser-provider-plugin) |
 | **密钥管理器后端**（保险库 / 密码管理器 / 系统钥匙串） | [密钥源插件](/developer-guide/secret-source-plugin) |

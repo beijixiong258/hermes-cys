@@ -23,7 +23,7 @@ Usage:
     all_tools = resolve_toolset("full_stack")
 """
 
-from typing import List, Dict, Any, Set, Optional
+from typing import Dict, List, Any, Set, Optional, Tuple
 
 
 # Shared tool list for CLI and all messaging platform toolsets.
@@ -44,10 +44,7 @@ _HERMES_CORE_TOOLS = [
     "read_file", "write_file", "patch", "search_files",
     # Vision + image generation
     "vision_analyze", "image_generate",
-    # BFL FLUX 3 video generation
-    "bfl_flux3_text_to_video", "bfl_flux3_image_to_video",
-    "bfl_flux3_keyframes_to_video", "bfl_flux3_video_continuation",
-    "bfl_flux3_get_result", "bfl_flux3_prompting_guide",
+
     # Skills
     "skills_list", "skill_view", "skill_manage",
     # Browser automation
@@ -137,24 +134,6 @@ TOOLSETS = {
     },
 
 
-    "bfl": {
-        "description": (
-            "Black Forest Labs FLUX 3 video generation through the Nous tool "
-            "gateway: per-mode submit tools (text, image, keyframes, "
-            "continuation), a poll tool, and a prompting guide. Generations "
-            "take minutes, so submit returns a job id and the model polls for "
-            "the result."
-        ),
-        "tools": [
-            "bfl_flux3_text_to_video",
-            "bfl_flux3_image_to_video",
-            "bfl_flux3_keyframes_to_video",
-            "bfl_flux3_video_continuation",
-            "bfl_flux3_get_result",
-            "bfl_flux3_prompting_guide",
-        ],
-        "includes": []
-    },
 
     "computer_use": {
         "description": (
@@ -255,6 +234,7 @@ TOOLSETS = {
             "open_preview", "read_preview",
             "read_window_below",
             "focus_pane", "react_to_message",
+            "setup_mcp",
         ],
         "includes": []
     },
@@ -420,10 +400,7 @@ TOOLSETS = {
             "read_file", "write_file", "patch", "search_files",
             # Vision + image generation
             "vision_analyze", "image_generate",
-            # BFL FLUX 3 video generation
-            "bfl_flux3_text_to_video", "bfl_flux3_image_to_video",
-            "bfl_flux3_keyframes_to_video", "bfl_flux3_video_continuation",
-            "bfl_flux3_get_result", "bfl_flux3_prompting_guide",
+
             # Skills
             "skills_list", "skill_view", "skill_manage",
             # Browser automation
@@ -454,8 +431,8 @@ TOOLSETS = {
     "hermes-cron": {
         # Mirrors hermes-cli so cron's "default" toolset is the same set of
         # core tools users see interactively — then `hermes tools` filters
-        # them down per the platform config. _DEFAULT_OFF_TOOLSETS (moa,
-        # homeassistant) are excluded by _get_platform_tools() unless
+        # them down per the platform config. _DEFAULT_OFF_TOOLSETS are excluded
+        # by _get_platform_tools() unless
         # the user explicitly enables them.
         "description": "Default cron toolset - same core tools as hermes-cli; gated by `hermes tools`",
         "tools": _HERMES_CORE_TOOLS,
@@ -685,6 +662,19 @@ def bundle_non_core_tools(toolset_name: str) -> Set[str]:
     return to_remove
 
 
+# Resolution memo keyed on (toolset name, include_registry, registry
+# generation). resolve_toolset() recursively walks toolset includes and, with
+# include_registry=True, merges registry-registered tools on every call —
+# measured ~2us/toolset in isolation but called dozens of times per
+# _get_platform_tools() (per-keystroke /tools completion) and per picker
+# render. The registry exposes a monotonic _generation counter (bumped on
+# every register/deregister/alias/MCP refresh — see tools/registry.py), so a
+# cache entry is valid for as long as the generation is unchanged; external
+# callers never pass ``visited``, so the memo engages exactly at the public
+# entry and the internal cycle-detection recursion stays untouched.
+_resolve_toolset_memo: Dict[Tuple[str, bool, int, int], List[str]] = {}
+
+
 def resolve_toolset(name: str, visited: Set[str] = None, *, include_registry: bool = True) -> List[str]:
     """
     Recursively resolve a toolset to get all tool names.
@@ -705,6 +695,21 @@ def resolve_toolset(name: str, visited: Set[str] = None, *, include_registry: bo
     Returns:
         List[str]: List of all tool names in the toolset
     """
+    external_call = visited is None
+    if external_call:
+        try:
+            from tools.registry import registry
+
+            registry_id = id(registry)
+            generation = getattr(registry, "_generation", 0)
+        except Exception:
+            registry_id = 0
+            generation = 0
+        memo_key = (name, include_registry, registry_id, generation)
+        cached = _resolve_toolset_memo.get(memo_key)
+        if cached is not None:
+            return list(cached)
+
     if visited is None:
         visited = set()
 
@@ -764,7 +769,22 @@ def resolve_toolset(name: str, visited: Set[str] = None, *, include_registry: bo
         included_tools = resolve_toolset(included_name, visited, include_registry=include_registry)
         tools.update(included_tools)
 
-    return sorted(tools)
+    result = sorted(tools)
+    if external_call:
+        try:
+            from tools.registry import registry
+
+            registry_id = id(registry)
+            generation = getattr(registry, "_generation", 0)
+        except Exception:
+            registry_id = 0
+            generation = 0
+        # Entries from previous registry generations are never hit again;
+        # keep the memo bounded across long sessions with many MCP refreshes.
+        if len(_resolve_toolset_memo) >= 256:
+            _resolve_toolset_memo.clear()
+        _resolve_toolset_memo[(name, include_registry, registry_id, generation)] = list(result)
+    return result
 
 
 def resolve_multiple_toolsets(toolset_names: List[str]) -> List[str]:

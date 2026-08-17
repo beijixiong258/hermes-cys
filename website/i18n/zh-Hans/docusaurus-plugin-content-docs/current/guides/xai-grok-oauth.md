@@ -12,7 +12,7 @@ Hermes Agent 通过基于浏览器的 OAuth 登录流程支持 xAI Grok，认证
 
 该传输层复用 `codex_responses` 适配器（xAI 暴露了 Responses 风格的端点），因此推理、工具调用、流式传输和 prompt（提示词）缓存无需任何适配器改动即可正常工作。
 
-同一 OAuth bearer token 也会被 Hermes 中所有直连 xAI 的功能复用——TTS、图像生成、视频生成和转录——因此单次登录即可覆盖全部四项功能。
+同一 OAuth bearer token 也会被 Hermes 中所有直连 xAI 的功能复用——TTS、图像生成和转录——因此单次登录即可覆盖全部三项功能。
 
 ## 概览
 
@@ -22,7 +22,7 @@ Hermes Agent 通过基于浏览器的 OAuth 登录流程支持 xAI Grok，认证
 | 显示名称 | xAI Grok OAuth (SuperGrok / X Premium+) |
 | 认证类型 | 浏览器 OAuth 2.0 设备代码 |
 | 传输层 | xAI Responses API（`codex_responses`） |
-| 默认模型 | `grok-build-0.1` |
+| 默认模型 | `grok-4.6` |
 | 端点 | `https://api.x.ai/v1` |
 | 认证服务器 | `https://accounts.x.ai` |
 | 需要环境变量 | 否（此 provider 不使用 `XAI_API_KEY`） |
@@ -47,7 +47,7 @@ hermes model
 # → 从 provider 列表中选择 "xAI Grok OAuth (SuperGrok / X Premium+)"
 # → Hermes 打开或打印 accounts.x.ai 验证 URL
 # → 如有提示，输入显示的代码，然后在浏览器中批准访问
-# → 选择模型（grok-build-0.1 在列表顶部）
+# → 选择模型（grok-4.6 在列表顶部）
 # → 开始对话
 
 hermes
@@ -94,13 +94,13 @@ hermes doctor
 ```bash
 hermes model
 # → 选择 "xAI Grok OAuth (SuperGrok / X Premium+)"
-# → 从模型列表中选择（grok-build-0.1 固定在顶部）
+# → 从模型列表中选择（grok-4.6 固定在顶部）
 ```
 
 或直接设置模型：
 
 ```bash
-hermes config set model.default grok-build-0.1
+hermes config set model.default grok-4.6
 hermes config set model.provider xai-oauth
 ```
 
@@ -110,7 +110,7 @@ hermes config set model.provider xai-oauth
 
 ```yaml
 model:
-  default: grok-build-0.1
+  default: grok-4.6
   provider: xai-oauth
   base_url: https://api.x.ai/v1
 ```
@@ -136,25 +136,20 @@ hermes --provider xai-grok-oauth   # 别名
 hermes tools
 # → Text-to-Speech       → "xAI TTS"
 # → Image Generation     → "xAI Grok Imagine (image)"
-# → Video Generation     → "xAI Grok Imagine"
-# → X (Twitter) Search   → "xAI Grok OAuth (SuperGrok / X Premium+)"
 ```
 
 如果 OAuth token 已存储，选择器会确认并跳过凭据提示。如果既没有 OAuth 也没有设置 `XAI_API_KEY`，选择器会提供三选一菜单：OAuth 登录、粘贴 API 密钥或跳过。
 
-:::note 视频生成默认关闭
-`video_gen` 工具集默认禁用。在 `hermes tools` → `🎬 Video Generation`（按空格键）中启用后，agent 才能调用 `video_generate`。否则 agent 可能回退到内置的 ComfyUI 技能，该技能同样标记为视频生成。
-:::
 
 :::note 配置 xAI 凭据后 X 搜索自动启用
-只要配置了 xAI 凭据（SuperGrok / X Premium+ OAuth token 或 `XAI_API_KEY`），`x_search` 工具集就会自动启用。如不需要，请通过 `hermes tools` → `🐦 X (Twitter) Search`（按空格键）显式禁用。该工具通过 xAI 内置的 `x_search` Responses API 路由——支持 **SuperGrok / X Premium+ OAuth 登录**或付费 `XAI_API_KEY`，两者同时配置时优先使用 OAuth（消耗订阅配额而非 API 费用）。未配置任何 xAI 凭据时，无论工具集是否启用，工具 schema 都对模型隐藏。
 :::
 
 ### 模型
 
 | 工具 | 模型 | 说明 |
 |------|-------|-------|
-| 对话 | `grok-build-0.1` | 默认；通过 OAuth 登录时自动选择 |
+| 对话 | `grok-4.6` | 默认；固定在 OAuth 选择器顶部 |
+| 对话 | `grok-build-0.1` | 面向编程的 Grok Build 模型 |
 | 对话 | `grok-4.3` | 之前的默认 |
 | 对话 | `grok-4.20-0309-reasoning` | 推理变体 |
 | 对话 | `grok-4.20-0309-non-reasoning` | 非推理变体 |
@@ -165,7 +160,7 @@ hermes tools
 | 视频 | `grok-imagine-video-1.5-preview` | 图像转视频；日期别名 `grok-imagine-video-1.5-2026-05-30` |
 | TTS | （默认音色） | xAI `/v1/tts` 端点 |
 
-对话模型目录从磁盘上的 `models.dev` 缓存实时获取；缓存刷新后，新的 xAI 模型会自动出现。`grok-build-0.1` 始终固定在列表顶部。
+对话模型目录从磁盘上的 `models.dev` 缓存实时获取；缓存刷新后，新的 xAI 模型会自动出现。`grok-4.6` 始终固定在列表顶部。
 
 ## 环境变量
 

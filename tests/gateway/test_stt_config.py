@@ -1,4 +1,4 @@
-"""Gateway STT config tests — honor stt.enabled: false from config.yaml."""
+"""Gateway STT config tests — disabled by default, opt-in via config.yaml."""
 
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
@@ -14,6 +14,10 @@ from gateway.session import SessionSource
 def test_gateway_config_stt_disabled_from_dict_nested():
     config = GatewayConfig.from_dict({"stt": {"enabled": False}})
     assert config.stt_enabled is False
+
+
+def test_gateway_config_stt_disabled_by_default():
+    assert GatewayConfig.from_dict({}).stt_enabled is False
 
 
 def test_load_gateway_config_bridges_stt_enabled_from_config_yaml(tmp_path, monkeypatch):

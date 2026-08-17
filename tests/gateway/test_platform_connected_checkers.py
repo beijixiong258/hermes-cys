@@ -27,7 +27,6 @@ def test_all_builtins_have_checker_or_generic_token_path():
         Platform.SLACK,
         Platform.MATRIX,
         Platform.MATTERMOST,
-        Platform.HOMEASSISTANT,
     }}
 
     # Platforms with a bespoke checker
@@ -50,7 +49,7 @@ def test_all_builtins_have_checker_or_generic_token_path():
         pass
 
     # Every built-in should be in one of the sets
-    all_builtins = set(_BUILTIN_PLATFORM_VALUES) - {"homeassistant", "yuanbao"}
+    all_builtins = set(_BUILTIN_PLATFORM_VALUES)
     missing = (
         all_builtins
         - generic_token_values

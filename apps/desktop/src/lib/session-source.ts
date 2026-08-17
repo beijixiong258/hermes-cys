@@ -22,8 +22,7 @@ const SOURCE_LABELS: Record<string, string> = {
   tui: 'TUI',
   webhook: 'Webhook',
   weixin: 'WeChat',
-  whatsapp: 'WhatsApp',
-  yuanbao: 'Yuanbao'
+  whatsapp: 'WhatsApp'
 }
 
 const SOURCE_ALIASES: Record<string, string[]> = {
@@ -59,7 +58,6 @@ export const MESSAGING_SESSION_SOURCE_IDS = [
   'whatsapp',
   'bluebubbles',
   'photon',
-  'homeassistant',
   'email',
   'sms',
   'webhook',
@@ -67,7 +65,6 @@ export const MESSAGING_SESSION_SOURCE_IDS = [
   'weixin',
   'wecom',
   'qqbot',
-  'yuanbao',
   'dingtalk',
   'feishu'
 ]

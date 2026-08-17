@@ -1067,7 +1067,7 @@ class TestEnvWriteDenylist:
         "allowed_key",
         [
             "HERMES_LANGFUSE_PUBLIC_KEY",
-            "HERMES_SPOTIFY_CLIENT_ID",
+            "HERMES_EXAMPLE_INTEGRATION_KEY",
             "HERMES_QWEN_BASE_URL",
             "HERMES_MAX_ITERATIONS",
         ],
@@ -1077,7 +1077,7 @@ class TestEnvWriteDenylist:
         location names (HOME/PROFILE/CONFIG/ENV) are. Integration
         credentials following the ``HERMES_*`` convention must keep
         working or we'd regress every provider setup wizard that
-        currently writes one of these (auth.py, Spotify, Langfuse, …)."""
+        currently writes one of these (auth.py, Langfuse, and others)."""
         save_env_value(allowed_key, "test-value-123")
         env = load_env()
         assert env[allowed_key] == "test-value-123"
@@ -1311,6 +1311,54 @@ class TestDelegationCapUnificationMigration:
             raw = yaml.safe_load((tmp_path / "config.yaml").read_text())
         # Migration must not materialize a delegation section it never had.
         assert "delegation" not in raw
+
+
+class TestBackgroundNotificationsConciseMigration:
+    """v34 → v35: move users on the old implicit default 'all' to 'concise'."""
+
+    def _write(self, tmp_path, body):
+        (tmp_path / "config.yaml").write_text(body, encoding="utf-8")
+
+    def test_all_becomes_concise(self, tmp_path):
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            self._write(
+                tmp_path,
+                "_config_version: 34\n"
+                "display:\n"
+                "  background_process_notifications: all\n",
+            )
+            migrate_config(interactive=False, quiet=True)
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text())
+        assert raw["display"]["background_process_notifications"] == "concise"
+
+    def test_explicit_choices_preserved(self, tmp_path):
+        # NOTE: bare `off` in YAML parses as boolean False — the gateway mode
+        # loader maps False → "off", and the migration must leave it alone.
+        for written, expected in (
+            ("off", False), ("result", "result"),
+            ("error", "error"), ("concise", "concise"),
+        ):
+            with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+                self._write(
+                    tmp_path,
+                    "_config_version: 34\n"
+                    "display:\n"
+                    f"  background_process_notifications: {written}\n",
+                )
+                migrate_config(interactive=False, quiet=True)
+                raw = yaml.safe_load((tmp_path / "config.yaml").read_text())
+            assert raw["display"]["background_process_notifications"] == expected
+
+    def test_unset_key_is_not_materialized(self, tmp_path):
+        with patch.dict(os.environ, {"HERMES_HOME": str(tmp_path)}):
+            self._write(tmp_path, "_config_version: 34\nmodel:\n  provider: openrouter\n")
+            migrate_config(interactive=False, quiet=True)
+            raw = yaml.safe_load((tmp_path / "config.yaml").read_text())
+        # Unset users inherit the new default at read time; no write needed.
+        assert "display" not in raw or "background_process_notifications" not in raw.get("display", {})
+
+    def test_default_config_is_concise(self):
+        assert DEFAULT_CONFIG["display"]["background_process_notifications"] == "concise"
 
 
 class TestConfigNormalizationDoesNotOverwriteUserValues:

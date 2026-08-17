@@ -46,8 +46,8 @@ export interface PluginOs {
    *  the user is away from Hermes — use `host.notify` for the in-app toast.
    *  Throttled per plugin; reserve it for genuinely notable events. */
   notify: (input: PluginNativeNotificationInput) => void
-  /** Open a URL with the OS default handler (browser, mail client, custom
-   *  schemes like `spotify:`). Resolves false when the shell can't. */
+  /** Open a URL with the OS default handler. Resolves false when the shell
+   *  can't. */
   openExternal: (url: string) => Promise<boolean>
   /** Reveal a path in the OS file manager (Finder / Explorer). Resolves
    *  false when unavailable. */

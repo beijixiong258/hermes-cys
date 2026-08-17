@@ -108,22 +108,6 @@ def _module_registers_tools(module_path: Path) -> bool:
     return any(_is_registry_register_call(stmt) for stmt in tree.body)
 
 
-_DISABLED_BUILTIN_TOOL_MODULES = frozenset({
-    # Permanently removed from the normal runtime surface. The source files
-    # remain for historical/reference purposes, but must not be imported by
-    # the automatic built-in discovery pass.
-    "tools.homeassistant_tool",
-    "tools.yuanbao_tools",
-})
-
-_DISABLED_BUILTIN_TOOLSETS = frozenset({
-    "homeassistant",
-    "yuanbao",
-    "hermes-homeassistant",
-    "hermes-yuanbao",
-})
-
-
 def discover_builtin_tools(tools_dir: Optional[Path] = None) -> List[str]:
     """Import built-in self-registering tool modules and return their module names.
 
@@ -163,8 +147,6 @@ def discover_builtin_tools(tools_dir: Optional[Path] = None) -> List[str]:
         fresh_cache[abs_path] = [stat_key[0], stat_key[1], registers]
         if registers:
             module_name = f"tools.{path.stem}"
-            if module_name in _DISABLED_BUILTIN_TOOL_MODULES:
-                continue
             module_names.append(module_name)
 
     # Drop entries for files that no longer exist; rewrite only when changed.
@@ -771,18 +753,11 @@ class ToolRegistry:
     ):
         """Register a tool. Called at module-import time by each tool file.
 
-        Removed built-in toolsets are rejected at the registry boundary even if
-        a historical source module is imported explicitly. This keeps old
-        source files harmless and prevents them from reappearing through the
-        dynamic toolset compatibility layer.
         replace an existing built-in tool implementation (e.g. swap the
         default browser tool for a headed-Chrome CDP backend). Without it,
         registrations that would shadow an existing tool from a different
         toolset are rejected to prevent accidental overwrites.
         """
-        if toolset in _DISABLED_BUILTIN_TOOLSETS:
-            logger.debug("Skipping registration for disabled toolset: %s", toolset)
-            return
         handler_owner = self._plugin_owner_of(handler)
         caller_owner = self._plugin_namespace_of_module(self._caller_module())
         owner = caller_owner or handler_owner

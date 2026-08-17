@@ -22,7 +22,6 @@ Hermes has several distinct pluggable interfaces — some use Python `register_*
 | A **memory backend** (Honcho/Mem0/Supermemory/etc.) | [Memory Provider Plugins](/developer-guide/memory-provider-plugin) |
 | A **context-compression engine** | [Context Engine Plugins](/developer-guide/context-engine-plugin) |
 | An **image-generation backend** | [Image Generation Provider Plugins](/developer-guide/image-gen-provider-plugin) |
-| A **video-generation backend** | [Video Generation Provider Plugins](/developer-guide/video-gen-provider-plugin) |
 | A **web-search / extract backend** | [Web Search Provider Plugins](/developer-guide/web-search-provider-plugin) |
 | A **cloud browser backend** (Browserbase-style CDP session provider) | [Browser Provider Plugins](/developer-guide/browser-provider-plugin) |
 | A **secret-manager backend** (vault / password manager / OS keystore) | [Secret Source Plugins](/developer-guide/secret-source-plugin) |
@@ -253,6 +252,25 @@ config keys (`plugins.entries.<id>.allow_tool_override`, …) still work but
 are deprecated — declare capabilities instead so users get a single,
 auditable consent screen. Capabilities are consent + audit, **not a
 sandbox**: they gate host API surfaces, nothing more.
+
+**Pip-distributed plugins** have no `plugin.yaml` directory once installed,
+so declare capabilities in distribution metadata instead, via the companion
+`hermes_agent.plugin_capabilities` entry-point group. Each declaration is
+named `<plugin-id>.<capability-id>` and points at the same object as your
+`hermes_agent.plugins` entry point:
+
+```toml
+[project.entry-points."hermes_agent.plugins"]
+calculator = "my_pkg:register"
+
+[project.entry-points."hermes_agent.plugin_capabilities"]
+"calculator.tools.override" = "my_pkg:register"
+```
+
+Hermes reads these from installed metadata without importing your code, so
+`hermes plugins capabilities` and the consent flow stay accurate for pip
+installs.
+
 ### Manifest v2 reference
 
 `plugin.yaml` also supports an additive **v2 schema** (#64165). Every field is

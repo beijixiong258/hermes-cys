@@ -19,6 +19,7 @@ import { browseBackward, browseForward, deriveUserHistory, isBrowsingHistory } f
 import { POPOUT_WIDTH_REM } from '@/store/composer-popout'
 import { parkQueuedPrompts, removeQueuedPrompt, unparkQueuedPrompts } from '@/store/composer-queue'
 import { $hudMode } from '@/store/hud'
+import { sessionBlockingPrompt } from '@/store/prompts'
 import { toggleReview } from '@/store/review'
 import { $gatewayState } from '@/store/session'
 import { $threadScrolledUp } from '@/store/thread-scroll'
@@ -72,6 +73,7 @@ import {
 import { useComposerScope } from './scope'
 import { ComposerStatusStack } from './status-stack'
 import { CodingStatusRow } from './status-stack/coding-row'
+import { SuggestionPills } from './suggestion-pills'
 import { extractClipboardImageBlobs, openDirectiveScope } from './text-utils'
 import { ComposerTriggerPopover } from './trigger-popover'
 import type { ChatBarProps } from './types'
@@ -156,6 +158,10 @@ export function ChatBar({
   // would discard a question the user may want to come back to. The blocking
   // prompt owns its own dismissal (Skip, Reject, dialog close).
   const awaitingInput = useStore(scope.$awaitingInput)
+  // Parked on an approval/sudo/secret prompt: typing can't answer those, so the
+  // busy submit routes text to the queue instead of a steer (which would sit
+  // undelivered behind the blocked tool batch). Drives the button affordance.
+  const blockingPrompt = useStore(useMemo(() => sessionBlockingPrompt(sessionId ?? null), [sessionId]))
   const activeQueueSessionKey = queueSessionKey || sessionId || null
 
   // Status items (subagents, background processes) are keyed by the RUNTIME
@@ -328,7 +334,9 @@ export function ChatBar({
 
   // Steer only makes sense mid-turn, text-only (the gateway can't carry images
   // into a tool result) and never for a slash command (those execute inline).
-  const canSteer = busy && !compacting && !!onSteer && attachments.length === 0 && isSteerableText
+  // A blocking prompt (approval/sudo/secret) also rules it out: the tool batch
+  // is parked on the user, so a steer can't reach the model — text queues.
+  const canSteer = busy && !compacting && !blockingPrompt && !!onSteer && attachments.length === 0 && isSteerableText
 
   // While busy: text redirects the live turn (Cursor-style stop-and-correct),
   // attachments queue for the next turn, an empty composer stops.
@@ -543,12 +551,33 @@ export function ChatBar({
   }
 
   const handleEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Self-heal a stale composition flag before the guard below reads it.
+    // compositionend can be missed (focus jumps, input-source switches, or a
+    // programmatic DOM swap mid-preedit abort the composition without the
+    // event reaching us), and a wedged composingRef silently swallows every
+    // Enter — and, via the form onSubmit guard, the Send button — until the
+    // component remounts (#44135). Chromium stamps isComposing on every
+    // keydown of a genuine composition, so when the native flag says we're
+    // not composing, trust it and recover.
+    if (composingRef.current && !event.nativeEvent.isComposing) {
+      composingRef.current = false
+    }
+
     // IME composition: Enter confirms composed text, not a message submission.
     // We check both composingRef (set by compositionstart/compositionend, robust
     // across browsers) and nativeEvent.isComposing (Chromium fallback).  Without
     // this guard, pressing Enter to finalise a Korean/Japanese/Chinese IME
     // preedit fires submitDraft() and splits the message mid-word.
     if (composingRef.current || event.nativeEvent.isComposing) {
+      return
+    }
+
+    // macOS Chinese IME (and some 3rd-party IMEs on Windows) emit Enter with
+    // keyCode 229 (legacy VK_PROCESSKEY) while isComposing is already false.
+    // The compositionend has fired but the keydown still carries 229, signalling
+    // "this Enter is an IME commit, not a user send".  If we let it through,
+    // the message fires before the committed text is fully in the DOM.
+    if (event.key === 'Enter' && event.keyCode === 229) {
       return
     }
 
@@ -995,7 +1024,15 @@ export function ChatBar({
         data-placeholder={placeholder}
         data-slot={RICH_INPUT_SLOT}
         onBeforeInput={handleEditorBeforeInput}
-        onBlur={() => window.setTimeout(closeTrigger, 80)}
+        onBlur={() => {
+          // A composition never survives focus loss (Chromium commits the
+          // preedit and fires compositionend on blur) — but if that event is
+          // missed, the wedged flag would block the Send button's form-submit
+          // guard forever (#44135). Clear unconditionally: by the time blur
+          // runs there is nothing left composing in this editor.
+          composingRef.current = false
+          window.setTimeout(closeTrigger, 80)
+        }}
         onCompositionEnd={event => {
           composingRef.current = false
 
@@ -1119,6 +1156,7 @@ export function ChatBar({
               and share one left edge with it. */}
           <div className={cn(composerFloatingStrip, 'px-[5px] pb-1.5 empty:hidden')}>
             <ActionBadges sessionId={statusSessionId} />
+            <SuggestionPills sessionId={statusSessionId} />
           </div>
           {/* Session-scoped status stack (todos, subagents, background tasks,
               queue). An in-flow dock child: the dock is bottom-anchored, so it

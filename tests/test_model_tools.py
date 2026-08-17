@@ -413,31 +413,7 @@ class TestCoerceNumberInfNan:
         assert _coerce_number("1e3") == 1000
 
 class TestDisabledToolsetsPlatformBundle:
-    """Regression test for #33924: disabling a platform bundle (hermes-*)
-    must not remove core tools from other enabled toolsets."""
-
-    def test_disabling_platform_bundle_preserves_core_tools(self):
-        """Disabling hermes-yuanbao should not strip core tools from hermes-telegram."""
-        from model_tools import get_tool_definitions
-
-        tools_telegram = get_tool_definitions(
-            enabled_toolsets=["hermes-telegram"],
-            quiet_mode=True,
-        )
-        tools_telegram_no_yuanbao = get_tool_definitions(
-            enabled_toolsets=["hermes-telegram"],
-            disabled_toolsets=["hermes-yuanbao"],
-            quiet_mode=True,
-        )
-        names_telegram = {t["function"]["name"] for t in tools_telegram}
-        names_no_yuanbao = {t["function"]["name"] for t in tools_telegram_no_yuanbao}
-
-        # Disabling a *different* platform bundle must not remove any tools
-        assert names_telegram == names_no_yuanbao, (
-            f"Tools lost after disabling hermes-yuanbao: "
-            f"{names_telegram - names_no_yuanbao}"
-        )
-
+    """Disabling a platform bundle removes its own tools."""
     def test_disabling_platform_bundle_removes_own_tools(self):
         """Disabling hermes-discord should remove discord-specific tools."""
         from model_tools import get_tool_definitions

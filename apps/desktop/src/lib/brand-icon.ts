@@ -124,7 +124,7 @@ import {
   SiSnyk,
   SiSoundcloud,
   SiSourcehut,
-  SiSpotify,
+
   SiStackblitz,
   SiStackexchange,
   SiStackoverflow,
@@ -270,7 +270,7 @@ const BRAND_ICONS: Record<string, BrandIcon> = {
   'vimeo.com': SiVimeo,
   'twitch.tv': SiTwitch,
   'soundcloud.com': SiSoundcloud,
-  'spotify.com': SiSpotify,
+
   'netflix.com': SiNetflix,
   'imdb.com': SiImdb,
   'goodreads.com': SiGoodreads,

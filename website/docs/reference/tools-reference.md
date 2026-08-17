@@ -42,7 +42,7 @@ These two tools live in the `browser` toolset but only register when a Chrome De
 
 | Tool | Description | Requires environment |
 |------|-------------|----------------------|
-| `clarify` | Ask the user a question when you need clarification, feedback, or a decision before proceeding. Supports three modes: 1. **Single-select multiple choice** — up to 4 choices; the user picks one or types their own answer via a 5th 'Other' option. 2. **Multi-select multiple choice** — `multi_select=true` renders checkboxes and returns a list of selected choices. 3. **Open-ended** — no choices; the user types a free-form response. On the classic CLI multi-select uses Space-to-toggle checkboxes; on messaging platforms without native checkbox UIs the user replies with comma/space-separated numbers (e.g. "1, 3") or the option text. | — |
+| `clarify` | Ask the user a question when you need clarification, feedback, or a decision before proceeding. Supports three modes: 1. **Single-select multiple choice** — up to 4 choices; the user picks one or types their own answer via a 5th 'Other' option. 2. **Multi-select multiple choice** — `multi_select=true` renders checkboxes and returns a list of selected choices. 3. **Open-ended** — no choices; the user types a free-form response. Choices are ordered best-first, so the first one is labelled `(Recommended)` on every surface and is the default highlight; the label is presentation only and is stripped from the answer the agent reads. On the classic CLI multi-select uses Space-to-toggle checkboxes; on messaging platforms without native checkbox UIs the user replies with comma/space-separated numbers (e.g. "1, 3") or the option text. | — |
 
 ## `code_execution` toolset
 
@@ -90,14 +90,6 @@ Scoped to the Feishu document-comment handler. Drives comment read/write operati
 | `search_files` | Search file contents or find files by name. Use this instead of grep/rg/find/ls in terminal. Ripgrep-backed, faster than shell equivalents. Content search (target='content'): Regex search inside files. Output modes: full matches with line… | — |
 | `write_file` | Write content to a file, completely replacing existing content. Use this instead of echo/cat heredoc in terminal. Creates parent directories automatically. OVERWRITES the entire file — use 'patch' for targeted edits. Auto-runs syntax checks on .py/.json/.yaml/.toml and other linted languages; only NEW errors introduced by the write are surfaced. | — |
 
-## `homeassistant` toolset
-
-| Tool | Description | Requires environment |
-|------|-------------|----------------------|
-| `ha_call_service` | Call a Home Assistant service to control a device. Use ha_list_services to discover available services and their parameters for each domain. | — |
-| `ha_get_state` | Get the detailed state of a single Home Assistant entity, including all attributes (brightness, color, temperature setpoint, sensor readings, etc.). | — |
-| `ha_list_entities` | List Home Assistant entities. Optionally filter by domain (light, switch, climate, sensor, binary_sensor, cover, fan, etc.) or by area name (living room, kitchen, bedroom, etc.). | — |
-| `ha_list_services` | List available Home Assistant services (actions) for device control. Shows what actions can be performed on each device type and what parameters they accept. Use this to discover how to control devices found via ha_list_entities. | — |
 
 ## `computer_use` toolset
 
@@ -210,22 +202,6 @@ Opt-in toolset (not loaded in the default `hermes-cli` set). Add via `--toolsets
 |------|-------------|----------------------|
 | `video_analyze` | Analyze video content from a URL or file path — captions, scene breakdowns, key timestamps, and visual descriptions. | — |
 
-## `video_gen` toolset
-
-Opt-in toolset (not loaded in the default `hermes-cli` set). Add via `--toolsets video_gen` or enable it in `hermes tools` → Video Generation, which also walks you through picking a backend.
-
-Backends ship as plugins under `plugins/video_gen/<name>/`:
-
-- **xAI Grok-Imagine** — text-to-video and image-to-video (SuperGrok OAuth or `XAI_API_KEY`).
-- **FAL.ai** — Veo 3.1, Pixverse v6, Kling O3 (requires `FAL_KEY`).
-
-The single `video_generate` tool covers both modalities — pass `image_url` to animate a still, omit it to generate from text alone. The active backend auto-routes to the right endpoint. The tool's description is rebuilt at session start to reflect the active backend's actual capabilities (modalities, aspect ratios, resolutions, duration range, max reference images, audio support). See [Video Generation Provider Plugins](/developer-guide/video-gen-provider-plugin) for backend authoring.
-
-| Tool | Description | Requires environment |
-|------|-------------|----------------------|
-| `video_generate` | Generate a video from a text prompt (text-to-video) or animate a still image (image-to-video) using the user's configured video generation backend. Pass `image_url` to animate that image; omit it to generate from text alone. The backend auto-routes to the right endpoint. Returns either an HTTP URL or an absolute file path in the `video` field. | Active `video_gen` plugin + its credential (e.g. `XAI_API_KEY`, `FAL_KEY`) |
-| `xai_video_edit` | Edit an existing video with xAI Imagine. Provider-specific (separate from `video_generate`). `video_url` must be the public HTTPS MP4 URL from a prior Imagine result. | xAI Imagine credentials (SuperGrok OAuth or `XAI_API_KEY`) |
-| `xai_video_extend` | Extend an existing video with xAI Imagine. Provider-specific (separate from `video_generate`). `video_url` must be the public HTTPS MP4 URL from a prior Imagine result. | xAI Imagine credentials (SuperGrok OAuth or `XAI_API_KEY`) |
 
 ## `web` toolset
 
@@ -234,11 +210,6 @@ The single `video_generate` tool covers both modalities — pass `image_url` to 
 | `web_search` | Search the web for information. Returns up to 5 results by default with titles, URLs, and descriptions. Accepts an optional `limit` (1-100, default 5). The query is passed through to the configured backend, so operators such as `site:domain`, `filetype:pdf`, `intitle:word`, `-term`, and `"exact phrase"` may work when the backend supports them. | EXA_API_KEY or PARALLEL_API_KEY or FIRECRAWL_API_KEY or TAVILY_API_KEY |
 | `web_extract` | Extract content from web page URLs. Returns clean page content in markdown/text (no LLM summarization — fast). Also works with PDF URLs (arxiv papers, documents) — pass the PDF link directly. Pages within the char budget (default 15000) return whole; larger pages return a head+tail window with a footer pointing at the full text saved on disk. Max 5 URLs per call. | EXA_API_KEY or PARALLEL_API_KEY or FIRECRAWL_API_KEY or TAVILY_API_KEY |
 
-## `x_search` toolset
-
-| Tool | Description | Requires environment |
-|------|-------------|----------------------|
-| `x_search` | Search X (Twitter) posts, profiles, and threads using xAI's built-in `x_search` Responses tool. Read-only public X discovery for current discussion, reactions, or claims on public X (not general web pages). Does not post, reply, like, DM, upload media, delete, or inspect the authenticated X account — those need a separate authenticated X API surface (e.g. the `xurl` skill). Off by default — opt in via `hermes tools` → 🐦 X (Twitter) Search. Schema is only registered when xAI credentials are configured (check_fn-gated). | XAI_API_KEY **or** xAI Grok OAuth (SuperGrok / Premium+) login |
 
 ## `tts` toolset
 

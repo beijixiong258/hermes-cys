@@ -1,9 +1,9 @@
 import {
   SiApple,
-  SiBilibili,
+
   SiDiscord,
   SiGmail,
-  SiHomeassistant,
+
   SiMatrix,
   SiMattermost,
   SiQq,
@@ -62,14 +62,13 @@ const PLATFORM_ICONS: Record<string, PlatformIconSpec> = {
   whatsapp: { Icon: SiWhatsapp, color: '#25D366', kind: 'brand' },
   bluebubbles: { Icon: SiApple, color: '#0BD318', kind: 'brand' },
   photon: { Icon: PhotonIcon, color: '#6366F1', kind: 'brand' },
-  homeassistant: { Icon: SiHomeassistant, color: '#18BCF2', kind: 'brand' },
+
   email: { Icon: SiGmail, color: '#EA4335', kind: 'brand' },
   sms: { Icon: MessageSquareText, color: '#F43F5E', kind: 'generic' },
   webhook: { Icon: LinkIcon, color: '#71717A', kind: 'generic' },
   api_server: { Icon: Globe, color: '#64748B', kind: 'generic' },
   weixin: { Icon: SiWechat, color: '#07C160', kind: 'brand' },
-  qqbot: { Icon: SiQq, color: '#EB1923', kind: 'brand' },
-  yuanbao: { Icon: SiBilibili, color: '#FB7299', kind: 'brand' }
+  qqbot: { Icon: SiQq, color: '#EB1923', kind: 'brand' }
 }
 
 interface PlatformAvatarProps extends Omit<ComponentPropsWithoutRef<'span'>, 'children'> {

@@ -53,6 +53,7 @@ const sidebars: SidebarsConfig = {
         'user-guide/profiles',
         'user-guide/profile-distributions',
         'user-guide/multi-profile-gateways',
+        'user-guide/multi-connection-desktop',
         'user-guide/git-worktrees',
         'user-guide/docker',
         'user-guide/security',
@@ -101,6 +102,7 @@ const sidebars: SidebarsConfig = {
             'user-guide/features/kanban-worker-lanes',
             'user-guide/features/goals',
             'user-guide/features/heartbeat',
+            'user-guide/features/loops',
             'user-guide/features/code-execution',
             'user-guide/features/hooks',
             'user-guide/features/batch-processing',
@@ -113,12 +115,12 @@ const sidebars: SidebarsConfig = {
             'user-guide/features/voice-mode',
             'user-guide/features/wake-word',
             'user-guide/features/web-search',
-            'user-guide/features/x-search',
+
             'user-guide/features/browser',
             'user-guide/features/computer-use',
             'user-guide/features/vision',
             'user-guide/features/image-generation',
-            'user-guide/features/spotify',
+
             'user-guide/features/pets',
             'user-guide/features/tts',
             'user-guide/features/deliverable-mode',
@@ -260,6 +262,7 @@ const sidebars: SidebarsConfig = {
                   collapsed: true,
                   items: [
                     'user-guide/skills/bundled/productivity/productivity-airtable',
+                    'user-guide/skills/bundled/productivity/productivity-box',
                     'user-guide/skills/bundled/productivity/productivity-document-to-action-items',
                     'user-guide/skills/bundled/productivity/productivity-docx',
                     'user-guide/skills/bundled/productivity/productivity-google-workspace',
@@ -380,11 +383,13 @@ const sidebars: SidebarsConfig = {
                     'user-guide/skills/optional/creative/creative-baoyu-comic',
                     'user-guide/skills/optional/creative/creative-concept-diagrams',
                     'user-guide/skills/optional/creative/creative-creative-ideation',
+                    'user-guide/skills/optional/creative/creative-draw-your-font',
                     'user-guide/skills/optional/creative/creative-heartmula',
                     'user-guide/skills/optional/creative/creative-hyperframes',
                     'user-guide/skills/optional/creative/creative-kanban-video-orchestrator',
                     'user-guide/skills/optional/creative/creative-meme-generation',
                     'user-guide/skills/optional/creative/creative-pixel-art',
+                    'user-guide/skills/optional/creative/creative-simple-english',
                     'user-guide/skills/optional/creative/creative-social-media-content-calendar',
                     'user-guide/skills/optional/creative/creative-tldraw-offline',
                     'user-guide/skills/optional/creative/creative-unreal-mcp',
@@ -608,15 +613,7 @@ const sidebars: SidebarsConfig = {
                     'user-guide/skills/optional/web-development/web-development-page-agent',
                   ],
                 },
-                {
-                  type: 'category',
-                  label: 'yuanbao',
-                  key: 'skills-optional-yuanbao',
-                  collapsed: true,
-                  items: [
-                    'user-guide/skills/optional/yuanbao/yuanbao-yuanbao',
-                  ],
-                },
+
               ],
             },
           ],
@@ -662,7 +659,7 @@ const sidebars: SidebarsConfig = {
             'user-guide/messaging/wecom-callback',
             'user-guide/messaging/weixin',
             'user-guide/messaging/qqbot',
-            'user-guide/messaging/yuanbao',
+
           ],
         },
         {
@@ -670,7 +667,7 @@ const sidebars: SidebarsConfig = {
           label: 'Other',
           items: [
             'user-guide/messaging/a2a',
-            'user-guide/messaging/homeassistant',
+
             'user-guide/messaging/mattermost',
             'user-guide/messaging/matrix',
             'user-guide/messaging/bluebubbles',
@@ -780,7 +777,7 @@ const sidebars: SidebarsConfig = {
                 'developer-guide/secret-source-plugin',
                 'developer-guide/model-provider-plugin',
                 'developer-guide/image-gen-provider-plugin',
-                'developer-guide/video-gen-provider-plugin',
+
                 'developer-guide/web-search-provider-plugin',
                 'developer-guide/browser-provider-plugin',
               ],

@@ -56,7 +56,7 @@ describe('PluginsSettings', () => {
 
   it('renders keyless rows read-only instead of falling back to name-addressed toggles', () => {
     // Name-addressed toggles flip every same-named plugin across category
-    // dirs (image_gen/fal vs video_gen/fal) — the reason toggles moved to
+    // category dirs — the reason toggles moved to
     // canonical keys. A pre-contract-v6 row must never reach the RPC.
     render(<PluginsSettings />)
 

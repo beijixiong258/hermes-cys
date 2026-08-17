@@ -9,7 +9,7 @@ description: "如何为 Hermes Agent 构建网页搜索/提取/爬取后端插�
 网页搜索提供商插件注册一个后端，用于处理 `web_search`、`web_extract` 以及（可选的）深度爬取工具调用。内置提供商——Firecrawl、SearXNG、Tavily、Exa、Parallel、Brave Search（免费层）和 DDGS——均以插件形式存放于 `plugins/web/<name>/` 目录下。你可以在该目录旁新建一个目录来添加新提供商，或覆盖已有的内置提供商。
 
 :::tip
-网页搜索是 Hermes 支持的多种**后端插件**之一。其他插件（各有其 ABC）包括：[图像生成提供商插件](/developer-guide/image-gen-provider-plugin)、[视频生成提供商插件](/developer-guide/video-gen-provider-plugin)、[记忆提供商插件](/developer-guide/memory-provider-plugin)、[上下文引擎插件](/developer-guide/context-engine-plugin)和[模型提供商插件](/developer-guide/model-provider-plugin)。通用工具/hook/CLI 插件请参阅[构建 Hermes 插件](/developer-guide/plugins)。
+网页搜索是 Hermes 支持的多种**后端插件**之一。其他插件（各有其 ABC）包括：[图像生成提供商插件](/developer-guide/image-gen-provider-plugin)、[记忆提供商插件](/developer-guide/memory-provider-plugin)、[上下文引擎插件](/developer-guide/context-engine-plugin)和[模型提供商插件](/developer-guide/model-provider-plugin)。通用工具/hook/CLI 插件请参阅[构建 Hermes 插件](/developer-guide/plugins)。
 :::
 
 ## 发现机制

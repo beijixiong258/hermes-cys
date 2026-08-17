@@ -138,7 +138,7 @@ function AgentPluginRowView({ row }: { row: AgentPluginRow }) {
 
   // Pre-contract-v6 backends return rows without a canonical key. Name-addressed
   // toggles silently flip every same-named plugin across category dirs
-  // (image_gen/fal vs video_gen/fal), so keyless rows are read-only — the
+  // category plugins can share a bare name, so keyless rows are read-only — the
   // backend-contract skew toast tells the user to update.
   const toggle = (
     <Switch

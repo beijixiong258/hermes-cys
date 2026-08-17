@@ -14,7 +14,7 @@ import { RichBoundary } from './rich-boundary'
 
 const FrameEmbedRenderer = lazy(() => import('./frame-embed'))
 const SocialEmbedRenderer = lazy(() => import('./social-embed'))
-const SpotifyEmbedRenderer = lazy(() => import('./spotify-embed'))
+
 const YouTubeEmbedRenderer = lazy(() => import('./youtube-embed'))
 
 function intrinsicHeight(descriptor: EmbedDescriptor): number {
@@ -36,9 +36,6 @@ function LazyRenderer({ descriptor }: { descriptor: EmbedDescriptor }) {
     return <YouTubeEmbedRenderer descriptor={descriptor} />
   }
 
-  if (descriptor.provider === 'spotify') {
-    return <SpotifyEmbedRenderer descriptor={descriptor} />
-  }
 
   return <FrameEmbedRenderer descriptor={descriptor} />
 }
